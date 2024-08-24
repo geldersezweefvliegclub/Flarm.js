@@ -1,0 +1,17 @@
+OGN:
+  ssssssimulator: //Users/richard/Documents/Helios/log/log-gezc-ehtl-11-08.txt
+  aprsServer: "aprs.glidernet.org"
+  aprsPort: 14580
+  aprsUser: "GEZC-EHTL"
+  aprsFilter: 'r/52.06/5.94/15'
+
+Helios:
+  url: ""
+  username: ''
+  password: ''
+  token: ''
+
+Vliegveld:
+  code: 'EHTL'
+  hoogte: 80
+  GeoJSON: 'EHTL t-strip.json'
