@@ -1,10 +1,10 @@
 
-import { readFileSync } from 'fs';
+import * as fs from 'fs';
 import * as yaml from 'js-yaml';
 import { join } from 'path';
-import {fileExistsSync} from "tsconfig-paths/lib/filesystem";
 import {v4 as uuidv4} from 'uuid';
 import { dayOfYear } from '../utils/utils';
+import {Logger} from "@nestjs/common";
 
 
 const YAML_CONFIG_FILENAME = 'flarm-config.yaml';
@@ -60,18 +60,19 @@ export default () => {
     flarmConfig.OGN.aprsUser = uuidv4().split('-')[0].toUpperCase();
 
     const configFile = join(process.cwd(), '/', YAML_CONFIG_FILENAME)
-
-    if (fileExistsSync(configFile))
+    const logger = new Logger()
+    try
     {
-        const cfg = yaml.load(
-            readFileSync(configFile, 'utf8'),
-        ) as Record<string, any>;
+        const cfg = yaml.load(fs.readFileSync(configFile, 'utf8')) as Record<string, any>;
 
         Object.keys(cfg).forEach((key) => {
             if (flarmConfig[key]) {
                 flarmConfig[key] = { ...flarmConfig[key], ...cfg[key] };
             }
         });
+    }
+    catch (e) {
+        logger.error(`Failed to load configuration from ${configFile}: ${e.message}`);
     }
 
     const today = new Date()

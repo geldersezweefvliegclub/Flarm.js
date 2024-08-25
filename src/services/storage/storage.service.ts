@@ -51,7 +51,7 @@ export class StorageService {
 
     fileNaam(key: string): string {
 
-        const sDir = process.cwd() + '/chache/';
+        const sDir = process.cwd() + '/cache/';
 
         if (!fs.existsSync(sDir)) {
             fs.mkdirSync(sDir, {recursive: true});
