@@ -11,6 +11,7 @@ import {isInsidePolygon} from "../../utils/utils";
 import {GliderEvents} from "../../shared/GliderEvents";
 import {GliderStatus} from "../../shared/GliderStatus";
 import {DateTime, Interval} from "luxon";
+import {WebSocketEvents} from "../../shared/WebSocketEvents";
 
 export enum StartMethode {
     Lier = 550,
@@ -242,12 +243,48 @@ export class ProcessingService implements  OnModuleInit, OnModuleDestroy  {
             }
         }
 
+        // controleer of we de clients moeten informeren over de status van het vliegtuig
+        var sendUpdate = false;
+        if (fdContainer.vliegtuigID !== undefined) {
+            const isInside =  isInsidePolygon([fdContainer.flarmData.longitude, fdContainer.flarmData.latitude], this.geoFence);
+
+            if (fdContainer.startID === undefined )
+            {
+                if (isInside && fdContainer.status === GliderStatus.On_Ground) {
+                    sendUpdate = true;
+                }
+            }
+            else {                  // Er is een startID bekend
+                if (idx < 0)
+                    sendUpdate = true;
+                else if (fdContainer.vliegtuigID !== previousUpdate.vliegtuigID)
+                    sendUpdate = true;
+                else if (fdContainer.status !== previousUpdate.status)
+                    sendUpdate = true;
+                else if (fdContainer.starttijd !== previousUpdate.starttijd)
+                    sendUpdate = true;
+                else if (fdContainer.landingstijd !== previousUpdate.landingstijd)
+                    sendUpdate = true;
+                else if (Math.abs(fdContainer.flarmData.kalman_altitude_agl - previousUpdate.flarmData.kalman_altitude_agl) > 50)
+                    sendUpdate = true;
+                else if (Math.abs(fdContainer.flarmData.kalman_speed - previousUpdate.flarmData.kalman_speed) > 10)
+                    sendUpdate = true;
+                else if (Math.abs(fdContainer.flarmData.kalman_climb - previousUpdate.flarmData.kalman_climb) > 1)
+                    sendUpdate = true;
+            }
+        }
+
+        if (sendUpdate)
+            this.eventEmitter.emit(WebSocketEvents.Publish, fdContainer);
+
         if (idx < 0)
             this.FlarmDataStore.push(fdContainer);
         else
             this.FlarmDataStore[idx] = fdContainer;
 
         this.logger.log(`Ontvangen: ${fdContainer.flarmData?.flarmId} ${fdContainer.REG_CALL} start ID: ${fdContainer?.startID}  GS:${fdContainer?.flarmData?.speed}|${fdContainer?.flarmData?.kalman_speed} ALT:${fdContainer?.flarmData?.altitude_agl}|${fdContainer?.flarmData?.kalman_altitude_agl} ${fdContainer?.flarmData?.climbRate}|${fdContainer?.flarmData?.kalman_climb} ${GliderStatus[fdContainer.status]}`);
+
+
     }
 
     // Er is al een tijd geen update ontvangen van een vliegtuig. Als het vliegtuig op circuit of landing is, dan nemen we aan dat het vliegtuig geland is.
@@ -353,5 +390,30 @@ export class ProcessingService implements  OnModuleInit, OnModuleDestroy  {
         if (this.FlarmDataStore[FlarmID]) {
             delete this.FlarmDataStore[FlarmID];
         }
+    }
+
+    @OnEvent(WebSocketEvents.OnConnect)
+    StuurAlles() {
+        this.logger.log("handleWebSocketConnectEvent ");
+        this.FlarmDataStore.forEach((fd) => {
+
+            var sendUpdate = false;
+            if (fd.vliegtuigID !== undefined) {
+                const isInside = isInsidePolygon([fd.flarmData.longitude, fd.flarmData.latitude], this.geoFence);
+
+                if (fd.startID !== undefined) {
+                    sendUpdate = true;
+                }
+                else {
+                    if (isInside && fd.status === GliderStatus.On_Ground) {
+                        sendUpdate = true;
+                    }
+                }
+            }
+
+            if (sendUpdate)
+                this.eventEmitter.emit(WebSocketEvents.Publish, fd);
+
+        });
     }
 }
