@@ -1,6 +1,8 @@
 name: Docker Image CI
 
 on:
+# Allows for manual trigger too in the Github Actions user interface (on github.com, Actions tab)
+  workflow_dispatch:
   push:
     branches: [ "main" ]
   pull_request:
