@@ -43,20 +43,22 @@ export class FlarmOgnService implements  OnModuleInit, OnModuleDestroy
     }
 
     onModuleInit(): any {
+        this.veldHoogte = this.configService.get('Vliegveld.hoogte');
         const config =  this.configService.get('OGN');
         console.log('FlarmOgnService initialized');
+
+        this.removeLostntervalId = setInterval(() => this.removeLost(), 1 * 60 * 1000);
 
         if (config.simulator) {
             this.logger.log('Running in simulator mode');
             this.runSimulator(config.simulator);
             return;
         }
-        this.veldHoogte = this.configService.get('Vliegveld.hoogte');
+
         setTimeout(() => {this.connectToAprsServer();}, 15000); // Wait 15 seconds before connecting
 
         // Send a keep-alive message to the server every 5 minutes
         this.keepAliveIntervalId = setInterval(() => this.client.write('# Keep alive\n'), 5 * 60 * 1000);
-        this.removeLostntervalId = setInterval(() => this.removeLost(), 1 * 60 * 1000);
     }
 
     onModuleDestroy(): any {
@@ -138,7 +140,7 @@ export class FlarmOgnService implements  OnModuleInit, OnModuleDestroy
                 if (!ignore) // Ignore comments
                 {
                     const msg: FlarmData = new AprsMessage(line) as FlarmData;
-                    msg.altitude_agl = msg.altitude - this.veldHoogte;
+                    msg.altitude_agl = Math.max(0, (msg.altitude - this.veldHoogte));       // mag nooit negatief zijn
 
                     if (msg.flarmId != null)
                     {
@@ -153,9 +155,6 @@ export class FlarmOgnService implements  OnModuleInit, OnModuleDestroy
                         msg.kalman_altitude_agl = Math.round(this.kalmanAltitudeContainer[msg.flarmId].filter(msg.altitude_agl));
                         msg.kalman_climb = Math.round(100*this.kalmanClimbContainer[msg.flarmId].filter(msg.climbRate)) / 100;
 
-                        if (this.flarmOntvangen[msg.flarmId] == null)
-                            this.eventEmitter.emit(FlarmEvents.NewFlarm, msg);
-
                         this.flarmOntvangen[msg.flarmId] = DateTime.now();
                         this.eventEmitter.emit(FlarmEvents.DataReceived, msg);
                     }
@@ -168,7 +167,7 @@ export class FlarmOgnService implements  OnModuleInit, OnModuleDestroy
         const now = DateTime.now();
         for (var key in this.flarmOntvangen) {
             const diff = Interval.fromDateTimes(this.flarmOntvangen[key], now);
-            if (diff.length('minutes') > 15)
+            if (diff.length('minutes') > 10)
             {
                 delete this.flarmOntvangen[key];
                 delete this.kalmanSpeedContainer[key];
@@ -189,18 +188,26 @@ export class FlarmOgnService implements  OnModuleInit, OnModuleDestroy
         });
         // Note: we use the crlfDelay option to recognize all instances of CR LF
         // ('\r\n') in input.txt as a single line break.
+        var displayTijd = DateTime.now();
 
         for await (const line of rl) {
             if (line.includes('| OGN:'))
             {
                 const timestamp = DateTime.fromSQL(line.split('| OGN:')[0]);
 
-                if (timestamp.hour > 11)
+                if (timestamp.hour * 100 + timestamp.minute > 1354)
                 {
                     while (DateTime.now().second != timestamp.second)
                     {
                         await this.sleep(100);
                     }
+
+                    if (displayTijd.second != timestamp.second)
+                    {
+                        displayTijd = timestamp;
+                        this.logger.log('Simulator: ' + displayTijd.toFormat('HH:mm:ss'));
+                    }
+
                     this.handleIncomingData(line.split('| OGN:')[1] + '\r\n');
                 }
             }

@@ -43,7 +43,7 @@ export class StartsService {
             this.storageService.opslaan('starts', this.startsCache);
         } catch (e) {
             if ((e.responseCode !== 304) && (e.responseCode !== 704)) { // server bevat dezelfde starts als cache
-                throw(e);
+                console.error(`Exception in starts.service.getStarts: ${e}`);
             }
         }
         return this.startsCache?.dataset as HeliosStartDataset[];
@@ -61,8 +61,12 @@ export class StartsService {
         const replacer = (key:string, value:any) =>
             typeof value === 'undefined' ? null : value;
 
-        const response: Response = await this.apiService.put('Startlijst/SaveObject', JSON.stringify(start, replacer));
-
-        return response.json();
+        try {
+            const response: Response = await this.apiService.put('Startlijst/SaveObject', JSON.stringify(start, replacer));
+            return response.json();
+        }
+        catch (e) {
+            console.error(`Exception in starts.service.updateStart: ${e}`);
+        }
     }
 }

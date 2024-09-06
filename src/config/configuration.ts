@@ -29,7 +29,11 @@ interface FlarmConfig { // Define the configuration interface
     Vliegveld: {
         code: string;
         hoogte: number;
-        GeoJSON: string;
+
+        Banen?: {
+            code: string;
+            GeoJSON: string;
+        }[];
     }
 }
 export default () => {
@@ -54,7 +58,8 @@ export default () => {
         Vliegveld: {
             code: 'EHTL',
             hoogte: 80,
-            GeoJSON: undefined,
+
+            Banen: undefined
         }
     }
     flarmConfig.OGN.aprsUser = uuidv4().split('-')[0].toUpperCase();

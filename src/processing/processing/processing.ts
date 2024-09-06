@@ -6,12 +6,11 @@ import {LoginService} from "../../services/apiservice/login.service";
 import {HeliosInboundService} from "../../inbound/helios/helios-inbound.service";
 import {HeliosStartDataset, HeliosVliegtuigenDataset} from "../../types/Helios";
 import {ConfigService} from "@nestjs/config";
-import * as fs from "node:fs";
-import {isInsidePolygon} from "../../utils/utils";
 import {GliderEvents} from "../../shared/GliderEvents";
 import {GliderStatus} from "../../shared/GliderStatus";
 import {DateTime, Interval} from "luxon";
 import {WebSocketEvents} from "../../shared/WebSocketEvents";
+import {HeliosEvents} from "../../shared/HeliosEvents";
 
 export enum StartMethode {
     Lier = 550,
@@ -26,10 +25,12 @@ export class FlarmDataWithStatus {
     landingstijd: string;
 
     REG_CALL?: string
+    SLEEPKIST?: boolean
     vliegtuigID?: number
     startID?: number
 
     startMethode?: StartMethode;
+    bijOnsGestart?: boolean;
     gesleeptStartID?: number;               // ID van de start van het zweefvliegtuig dat gesleept wordt
     gesleeptRegCall?: string;               // registratie van het zweefvliegtuig dat gesleept wordt
     maxHoogte?: number;                     // maximale hoogte van het sleepvliegtuig tijdens de vlucht
@@ -37,6 +38,7 @@ export class FlarmDataWithStatus {
     constructor(fData: FlarmData, vliegtuig: HeliosVliegtuigenDataset, start: HeliosStartDataset) {
         this.flarmData = fData;
         this.REG_CALL = (vliegtuig) ? vliegtuig.REG_CALL : undefined;
+        this.SLEEPKIST = (vliegtuig) ? vliegtuig.SLEEPKIST : undefined;
         this.vliegtuigID = (vliegtuig) ? vliegtuig.ID : undefined;
         this.startID = (start) ? start.ID : undefined;
         this.status = GliderStatus.Unknown;
@@ -47,9 +49,10 @@ export class FlarmDataWithStatus {
 @Injectable()
 export class ProcessingService implements  OnModuleInit, OnModuleDestroy  {
     private readonly logger = new Logger(ProcessingService.name);
-    private geoFence: string;
     private FlarmDataStore: FlarmDataWithStatus[] = [];
     private DelayedLandingIntervalId: NodeJS.Timeout;
+    private StuurAllesIntervalId: NodeJS.Timeout;
+
 
     constructor(private readonly eventEmitter: EventEmitter2,
                 private readonly loginservice: LoginService,
@@ -57,6 +60,7 @@ export class ProcessingService implements  OnModuleInit, OnModuleDestroy  {
                 private readonly heliosInboundService: HeliosInboundService) {
         this.logger = new Logger(ProcessingService.name);
         this.DelayedLandingIntervalId = setInterval(() => this.delayedLanding(), 0.50 * 60*1000);
+        this.StuurAllesIntervalId = setInterval(() => this.stuurAlles(), 5 * 60*1000);   // iedere 5 minuten alle vliegtuigen sturen
     }
 
     onModuleInit() {
@@ -65,33 +69,18 @@ export class ProcessingService implements  OnModuleInit, OnModuleDestroy  {
             const str:string = succes ? 'success' : 'failed';
             this.logger.log((`Helios login ${str}`));
         });
-
-        const fileGeoJSON = this.configService.get('Vliegveld.GeoJSON');
-
-        if (fileGeoJSON) {
-            if (fs.existsSync (fileGeoJSON)) {
-                this.logger.log(`GeoJSON file found ${fileGeoJSON}`);
-                const fileContents = fs.readFileSync(fileGeoJSON, 'utf8');
-                try
-                {
-                    this.geoFence = JSON.parse(fileContents).features[0].geometry.coordinates[0];
-                }
-                catch (e) {
-                    this.logger.error(`Error parsing GeoJSON file ${fileGeoJSON}`);
-                }
-            }
-        }
     }
 
     onModuleDestroy() {
         this.logger.log('ProcessingService has been destroyed.');
         clearInterval(this.DelayedLandingIntervalId);
+        clearInterval(this.StuurAllesIntervalId);
     }
 
     @OnEvent(FlarmEvents.DataReceived)
     handleDataReceivedEvent(payload: FlarmData) {
         const MIN_SPEED = 30;
-        const CIRCUIT_HOOGTE = 200;
+        const CIRCUIT_HOOGTE = 220;
         const LANDINGS_HOOGTE = 50;
 
         // als het vliegtuig niet bekend is, dan doen we niets
@@ -99,6 +88,7 @@ export class ProcessingService implements  OnModuleInit, OnModuleDestroy  {
         if (vliegtuig === undefined) {
             return;
         }
+
         const start = this.heliosInboundService.getStart(vliegtuig.ID);
         const fdContainer = new FlarmDataWithStatus(payload, vliegtuig, start);
 
@@ -114,6 +104,8 @@ export class ProcessingService implements  OnModuleInit, OnModuleDestroy  {
             fdContainer.landingstijd = previousUpdate.landingstijd;
             fdContainer.startMethode = previousUpdate.startMethode;
             fdContainer.gesleeptStartID = previousUpdate.gesleeptStartID;
+            fdContainer.gesleeptRegCall = previousUpdate.gesleeptRegCall;
+            fdContainer.bijOnsGestart = previousUpdate.bijOnsGestart;
         }
 
         if (fdContainer.flarmData.kalman_speed !== undefined && fdContainer.flarmData.kalman_altitude_agl !== undefined)
@@ -135,10 +127,10 @@ export class ProcessingService implements  OnModuleInit, OnModuleDestroy  {
                 if (fdContainer.flarmData.kalman_speed > MIN_SPEED &&
                     fdContainer.flarmData.kalman_altitude_agl <= CIRCUIT_HOOGTE &&
                     fdContainer.flarmData.kalman_altitude_agl > LANDINGS_HOOGTE &&
-                    (previousUpdate.status == GliderStatus.Flying) || (previousUpdate.status == GliderStatus.TakeOff))
+                    (previousUpdate.status == GliderStatus.Flying) || ((previousUpdate.status == GliderStatus.TakeOff) && fdContainer.flarmData.kalman_climb < 0))
                 {
                     // als het vliegtuig sneller dan 30 km/h vliegt en lager dan XXX meter, dan is het vliegtuig in circuit
-                    // Status takeoff is toegevoegd ivm kabelbreuk, dan kom je niet zo hoog
+                    // Status takeoff is toegevoegd ivm kabelbreuk, dan kom je niet zo hoog, maar je moet dan niet meer stijgen
                     fdContainer.status = GliderStatus.Circuit;
                 }
                 else if (fdContainer.flarmData.kalman_speed > MIN_SPEED && fdContainer.flarmData.kalman_altitude_agl <= LANDINGS_HOOGTE &&
@@ -157,7 +149,9 @@ export class ProcessingService implements  OnModuleInit, OnModuleDestroy  {
                     fdContainer.landingstijd = "";
 
                     const sleepIdx = this.zoekSleep(fdContainer.flarmData.flarmId, fdContainer.flarmData.kalman_speed, fdContainer.flarmData.kalman_altitude_agl, fdContainer.flarmData.course);
-                    const sleepFlarm = (sleepIdx < 0) ? undefined : this.FlarmDataStore[sleepIdx];
+                    const sleepKist = (sleepIdx < 0) ? undefined : this.FlarmDataStore[sleepIdx];
+
+                    fdContainer.bijOnsGestart = this.heliosInboundService.isInsidePolygon([fdContainer.flarmData.longitude, fdContainer.flarmData.latitude]);
 
                     // bepaal de startmethode
                     if (fdContainer.flarmData.kalman_climb > 10)            // climb rate > 10 m/s = lieren
@@ -167,24 +161,20 @@ export class ProcessingService implements  OnModuleInit, OnModuleDestroy  {
                     else {
                         if (vliegtuig.ZELFSTART)
                         {
-                            if (sleepFlarm)
-                            {
-                                // als het vliegtuig een zelfstarter is en er is een sleepvliegtuig gevonden, dan is het een sleepstart
+                            if (sleepKist)      // als het vliegtuig een zelfstarter is en er is een sleepvliegtuig gevonden, dan is het een toch sleepstart
                                 fdContainer.startMethode = StartMethode.Sleep;
-                            }
-                            else
-                            {
-                                // als het vliegtuig een zelfstarter is en er is geen sleepvliegtuig gevonden, dan is het een zelfstart
+                            else // als het vliegtuig een zelfstarter is en er is geen sleepvliegtuig gevonden, dan is het een zelfstart
                                 fdContainer.startMethode = StartMethode.Zelfstart;
-                            }
                         }
                         else
                         {
                             // als het vliegtuig geen zelfstarter is, dan is het slepen
-                            if (sleepFlarm)
+                            if (sleepKist)      // sleepvliegtui gevonden, dan is het een sleepstart
                             {
                                 fdContainer.startMethode = StartMethode.Sleep;
-                                this.FlarmDataStore[sleepIdx].gesleeptStartID = sleepFlarm.startID;
+
+                                // bij de sleepkist de gegevens invullen van het gesleepte vliegtuig
+                                this.FlarmDataStore[sleepIdx].gesleeptStartID = fdContainer.startID;
                                 this.FlarmDataStore[sleepIdx].gesleeptRegCall = vliegtuig.REG_CALL;
                             }
                             else
@@ -198,7 +188,7 @@ export class ProcessingService implements  OnModuleInit, OnModuleDestroy  {
                     if (start)
                     {
                         this.logger.log(`------- STARTING: ${vliegtuig.REG_CALL} ${start?.ID}`);
-                        this.eventEmitter.emit(GliderEvents.GliderStart, start?.ID, fdContainer.startMethode, sleepFlarm?.vliegtuigID);
+                        this.eventEmitter.emit(GliderEvents.GliderStart, start?.ID, fdContainer.startMethode, sleepKist?.vliegtuigID);
                     }
                     else
                     {
@@ -217,6 +207,7 @@ export class ProcessingService implements  OnModuleInit, OnModuleDestroy  {
                     {
                         if ((previousUpdate.status == GliderStatus.Circuit) || (previousUpdate.status == GliderStatus.Landing)) {
                             fdContainer.landingstijd = DateTime.now().toFormat('HH:mm');
+                            fdContainer.bijOnsGestart = false;
 
                             if (start)
                             {
@@ -238,44 +229,12 @@ export class ProcessingService implements  OnModuleInit, OnModuleDestroy  {
                             }
                         }
                         fdContainer.status = GliderStatus.On_Ground;
+                        this.checkAanmelden(fdContainer);
                     }
                 }
             }
         }
-
-        // controleer of we de clients moeten informeren over de status van het vliegtuig
-        var sendUpdate = false;
-        if (fdContainer.vliegtuigID !== undefined) {
-            const isInside =  isInsidePolygon([fdContainer.flarmData.longitude, fdContainer.flarmData.latitude], this.geoFence);
-
-            if (fdContainer.startID === undefined )
-            {
-                if (isInside && fdContainer.status === GliderStatus.On_Ground) {
-                    sendUpdate = true;
-                }
-            }
-            else {                  // Er is een startID bekend
-                if (idx < 0)
-                    sendUpdate = true;
-                else if (fdContainer.vliegtuigID !== previousUpdate.vliegtuigID)
-                    sendUpdate = true;
-                else if (fdContainer.status !== previousUpdate.status)
-                    sendUpdate = true;
-                else if (fdContainer.starttijd !== previousUpdate.starttijd)
-                    sendUpdate = true;
-                else if (fdContainer.landingstijd !== previousUpdate.landingstijd)
-                    sendUpdate = true;
-                else if (Math.abs(fdContainer.flarmData.kalman_altitude_agl - previousUpdate.flarmData.kalman_altitude_agl) > 50)
-                    sendUpdate = true;
-                else if (Math.abs(fdContainer.flarmData.kalman_speed - previousUpdate.flarmData.kalman_speed) > 10)
-                    sendUpdate = true;
-                else if (Math.abs(fdContainer.flarmData.kalman_climb - previousUpdate.flarmData.kalman_climb) > 1)
-                    sendUpdate = true;
-            }
-        }
-
-        if (sendUpdate)
-            this.eventEmitter.emit(WebSocketEvents.Publish, fdContainer);
+        this.eventEmitter.emit(WebSocketEvents.PublishFlarm, fdContainer);
 
         if (idx < 0)
             this.FlarmDataStore.push(fdContainer);
@@ -283,8 +242,6 @@ export class ProcessingService implements  OnModuleInit, OnModuleDestroy  {
             this.FlarmDataStore[idx] = fdContainer;
 
         this.logger.log(`Ontvangen: ${fdContainer.flarmData?.flarmId} ${fdContainer.REG_CALL} start ID: ${fdContainer?.startID}  GS:${fdContainer?.flarmData?.speed}|${fdContainer?.flarmData?.kalman_speed} ALT:${fdContainer?.flarmData?.altitude_agl}|${fdContainer?.flarmData?.kalman_altitude_agl} ${fdContainer?.flarmData?.climbRate}|${fdContainer?.flarmData?.kalman_climb} ${GliderStatus[fdContainer.status]}`);
-
-
     }
 
     // Er is al een tijd geen update ontvangen van een vliegtuig. Als het vliegtuig op circuit of landing is, dan nemen we aan dat het vliegtuig geland is.
@@ -349,36 +306,40 @@ export class ProcessingService implements  OnModuleInit, OnModuleDestroy  {
         return idx;
     }
 
-    @OnEvent(FlarmEvents.NewFlarm)
-    handleNewFlarmEvent(payload: FlarmData){
-        const VLIEG_HOOGTE = 50;
 
-        this.logger.log("handleNewFlarmEvent ", JSON.stringify(payload));
-        const vliegtuig:HeliosVliegtuigenDataset = this.heliosInboundService.getVliegtuigByFlarmcode(payload.flarmId)
+    checkAanmelden(payload: FlarmDataWithStatus)
+    {
+        if (!payload.vliegtuigID)
+            return;
 
-        if (vliegtuig) {
-           // this.logger.log("Vliegtuig gevonden ", JSON.stringify(vliegtuig));
+        const aangemeld = this.heliosInboundService.isAangemeld(payload.vliegtuigID);
 
-            const vliegveldID: number| undefined = this.heliosInboundService.getVliegveld() ? this.heliosInboundService.getVliegveld().ID : undefined;
+        if (aangemeld)   // als het vliegtuig al aangemeld is, dan hoeven we niets te doen
+            return;
 
-            // om geen vliegtuigen aan te melden die over vliegen, moet de hoogte en snelheid gecontroleerd worden
-            if (VLIEG_HOOGTE< payload.kalman_altitude_agl && payload.kalman_speed > 30)
-                return;
+        const isInside =  this.heliosInboundService.isInsidePolygon([payload.flarmData.longitude, payload.flarmData.latitude]);
+        if (isInside) {
+            const vliegveldID = this.heliosInboundService.getVliegveld() ? this.heliosInboundService.getVliegveld().ID : undefined;
+            this.logger.log(`AANMELDEN ${payload.vliegtuigID}  ${payload.REG_CALL}`);
+            this.eventEmitter.emit(GliderEvents.GliderAanmelden, payload.vliegtuigID, vliegveldID);
+        }
+    }
 
-            if (this.geoFence) {
-                // check if the flarm is inside the geoFence
-                // if not, ignore the flarm
-                // if so, send the flarm to the helios service
-                const isInside =  isInsidePolygon([payload.longitude, payload.latitude], this.geoFence);
-                if (isInside) {
-                    this.logger.log(`AANMELDEN ${vliegtuig.REG_CALL}`);
-                    this.eventEmitter.emit(GliderEvents.GliderAanmelden, vliegtuig.ID, vliegveldID);
-                }
+    // Zorg dat de juiste start gekoppeld is aan flarm
+    @OnEvent(HeliosEvents.StartsGeladen)
+    mapStartOnFlarm()
+    {
+        for (var i=0; i < this.FlarmDataStore.length; i++)
+        {
+            const nweStart = this.heliosInboundService.getStart( this.FlarmDataStore[i].vliegtuigID);
+
+            if (!nweStart) {
+                this.FlarmDataStore[i].startID = undefined;
+                this.eventEmitter.emit(WebSocketEvents.PublishFlarm, this.FlarmDataStore[i]);
             }
-            else
-            {
-                this.logger.log(`AANMELDEN ${vliegtuig.ID}`);
-                this.eventEmitter.emit(GliderEvents.GliderAanmelden, vliegtuig.ID, vliegveldID);
+            else if (nweStart.ID !== this.FlarmDataStore[i].startID) {
+                this.FlarmDataStore[i].startID = nweStart.ID;
+                this.eventEmitter.emit(WebSocketEvents.PublishFlarm, this.FlarmDataStore[i]);
             }
         }
     }
@@ -393,27 +354,10 @@ export class ProcessingService implements  OnModuleInit, OnModuleDestroy  {
     }
 
     @OnEvent(WebSocketEvents.OnConnect)
-    StuurAlles() {
+    stuurAlles() {
         this.logger.log("handleWebSocketConnectEvent ");
         this.FlarmDataStore.forEach((fd) => {
-
-            var sendUpdate = false;
-            if (fd.vliegtuigID !== undefined) {
-                const isInside = isInsidePolygon([fd.flarmData.longitude, fd.flarmData.latitude], this.geoFence);
-
-                if (fd.startID !== undefined) {
-                    sendUpdate = true;
-                }
-                else {
-                    if (isInside && fd.status === GliderStatus.On_Ground) {
-                        sendUpdate = true;
-                    }
-                }
-            }
-
-            if (sendUpdate)
-                this.eventEmitter.emit(WebSocketEvents.Publish, fd);
-
+            this.eventEmitter.emit(WebSocketEvents.PublishFlarm, fd);
         });
     }
 }

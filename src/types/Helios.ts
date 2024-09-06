@@ -3,6 +3,7 @@ import {components as vliegtuigenComponents} from './Vliegtuigen';
 import {components as startlijstComponents} from './Startlijst';
 import {components as aanwezigVliegtuigenComponents} from './AanwezigVliegtuigen';
 import {components as typesComponents} from './Types';
+import {components as DaginfoComponents} from './Daginfo';
 
 export type HeliosUserinfo = loginComponents['schemas']['Userinfo'];
 export type HeliosLidData = loginComponents["schemas"]["ref_leden"];
@@ -22,3 +23,6 @@ export type HeliosStart = startlijstComponents['schemas']['oper_startlijst_in'];
 export type HeliosType = typesComponents['schemas']['ref_types_in']
 export type HeliosTypes = typesComponents['schemas']['view_types']
 
+export type HeliosDagInfoDagen = DaginfoComponents['schemas']['view_daginfo'];
+export type HeliosDagInfosDataset = DaginfoComponents['schemas']['view_daginfo_dataset'];
+export type HeliosDagInfo = DaginfoComponents['schemas']['oper_daginfo'];

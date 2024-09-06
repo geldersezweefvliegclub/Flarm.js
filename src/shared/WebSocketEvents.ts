@@ -1,5 +1,8 @@
 export enum WebSocketEvents {
     OnConnect = 'websocket.onConnect',
-    Publish = 'websocket.publish',
-    SendMessage = 'websocket.sendMessage',
+    OnDisconnect = 'websocket.onDisconnect',
+    PublishFlarm = 'websocket.publish',
+
+    SendFlarmMessage = 'websocket.sendFlarmMessage',
+    SendStartMessage = 'websocket.sendStartMessage',
 }

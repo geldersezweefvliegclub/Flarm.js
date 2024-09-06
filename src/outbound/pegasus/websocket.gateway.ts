@@ -26,8 +26,14 @@ export class WebsocketGateway implements OnGatewayConnection, OnGatewayDisconnec
         this.logger.log(`Client disconnected: ${client.id}`);
     }
 
-    @OnEvent(WebSocketEvents.SendMessage)
-    handlePublishEvent(payload:any){
-        this.server.emit('message', payload);
+    @OnEvent(WebSocketEvents.SendFlarmMessage)
+    SendFlarmMessage(payload:any){
+        this.server.emit('flarm', payload);
+    }
+
+    @OnEvent(WebSocketEvents.SendStartMessage)
+    SendStartMessage(payload:any){
+        this.logger.log('Sending start message');
+        this.server.emit('start', payload);
     }
 }

@@ -36,7 +36,7 @@ export class TypesService {
             this.storageService.opslaan('types', this.typesCache);
         } catch (e) {
             if ((e.responseCode !== 304) && (e.responseCode !== 704)) { // server bevat dezelfde starts als cache
-                throw(e);
+                console.error(`Exception in types.service.getTypes: ${e}`);
             }
         }
         return this.typesCache?.dataset as HeliosType[];
