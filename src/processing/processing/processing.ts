@@ -117,14 +117,24 @@ export class ProcessingService implements  OnModuleInit, OnModuleDestroy  {
             else if ((fdContainer.flarmData.kalman_altitude_agl > previousUpdate.maxHoogte) || (previousUpdate.maxHoogte === undefined))
                 fdContainer.maxHoogte = fdContainer.flarmData.kalman_altitude_agl;
 
-            if (fdContainer.flarmData.kalman_speed > MIN_SPEED && fdContainer.flarmData.kalman_altitude_agl > CIRCUIT_HOOGTE)
+            if (idx < 0)
             {
-                // als het vliegtuig sneller dan 30 km/h vliegt en hoger dan XXX meter, dan is het vliegtuig aan het vliegen
-                fdContainer.status = GliderStatus.Flying;
-            }
-            else if (idx >= 0)
+                if (fdContainer.flarmData.kalman_speed > MIN_SPEED && fdContainer.flarmData.kalman_altitude_agl > CIRCUIT_HOOGTE)
+                {
+                    // als het vliegtuig sneller dan 30 km/h vliegt en hoger dan XXX meter, dan is het vliegtuig aan het vliegen
+                    fdContainer.status = GliderStatus.Flying;
+                }
+            else
             {
-                if (fdContainer.flarmData.kalman_speed > MIN_SPEED &&
+                // status moet via takeoff status gaan, dus niet in 1x van grond naar vliegen
+                if (previousUpdate.status !== GliderStatus.On_Ground &&
+                    fdContainer.flarmData.kalman_speed > MIN_SPEED   &&
+                    fdContainer.flarmData.kalman_altitude_agl > CIRCUIT_HOOGTE)
+                {
+                    // als het vliegtuig sneller dan 30 km/h vliegt en hoger dan XXX meter, dan is het vliegtuig aan het vliegen
+                    fdContainer.status = GliderStatus.Flying;
+                }
+                else if (fdContainer.flarmData.kalman_speed > MIN_SPEED &&
                     fdContainer.flarmData.kalman_altitude_agl <= CIRCUIT_HOOGTE &&
                     fdContainer.flarmData.kalman_altitude_agl > LANDINGS_HOOGTE &&
                     (previousUpdate.status == GliderStatus.Flying) || ((previousUpdate.status == GliderStatus.TakeOff) && fdContainer.flarmData.kalman_climb < 0))
