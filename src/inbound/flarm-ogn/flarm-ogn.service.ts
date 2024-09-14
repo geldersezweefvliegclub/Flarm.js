@@ -167,7 +167,7 @@ export class FlarmOgnService implements  OnModuleInit, OnModuleDestroy
         const now = DateTime.now();
         for (var key in this.flarmOntvangen) {
             const diff = Interval.fromDateTimes(this.flarmOntvangen[key], now);
-            if (diff.length('minutes') > 10)
+            if (diff.length('minutes') > 15)
             {
                 delete this.flarmOntvangen[key];
                 delete this.kalmanSpeedContainer[key];
