@@ -130,7 +130,7 @@ export class HeliosInboundService implements  OnModuleInit, OnModuleDestroy {
     }
 
     public getVliegtuigByFlarmcode(flarmcode: string): HeliosVliegtuigenDataset {
-        return this.vliegtuigenStore.find((vliegtuig) => vliegtuig.FLARMCODE.toLowerCase() === flarmcode.toLowerCase());
+        return this.vliegtuigenStore.find((vliegtuig) => vliegtuig.FLARMCODE.toLowerCase().includes(flarmcode.toLowerCase()));
     }
 
     public getStart(vliegtuigID: number): HeliosStartDataset {
