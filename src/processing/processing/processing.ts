@@ -261,6 +261,12 @@ export class ProcessingService implements  OnModuleInit, OnModuleDestroy  {
 
         for (var i=0 ; i < this.FlarmDataStore.length; i++) {
             const fdContainer = this.FlarmDataStore[i];
+
+            if (!fdContainer.flarmData) {
+                this.logger.error(`Geen flarm data voor ${fdContainer.REG_CALL} ` + JSON.stringify(fdContainer));
+                continue;
+            }
+
             const diff = Interval.fromDateTimes(fdContainer.flarmData.receivedTime, now);
 
             if ((diff.length('minutes') >= 1) && (fdContainer.status === GliderStatus.Landing) || (fdContainer.status === GliderStatus.Circuit))
