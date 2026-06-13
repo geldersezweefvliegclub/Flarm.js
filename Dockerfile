@@ -13,11 +13,8 @@ FROM node:lts-alpine AS runtime
 WORKDIR /app
 
 COPY package*.json ./
-RUN npm i --production
-
-
-
+RUN npm ci --omit=dev
 
 COPY --from=builder /app/dist ./dist
 
-ENTRYPOINT node ./dist/main.js
+ENTRYPOINT ["node", "./dist/main.js"]
