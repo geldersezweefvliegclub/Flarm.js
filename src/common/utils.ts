@@ -1,11 +1,8 @@
-import {Observable} from "rxjs";
 import {DateTime} from "luxon";
-
 
 export interface KeyValueArray {
     [key: string]: string | number | boolean
-};
-
+}
 
 export function dayOfYear(date: Date): number {
     const start = new Date(date.getFullYear(), 0, 0);
