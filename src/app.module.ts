@@ -1,11 +1,13 @@
 import { Module } from '@nestjs/common';
-import { InboundModule } from './inbound/inbound.module';
-import { OutboundModule } from './outbound/outbound.module';
+import { HeliosModule } from './helios/helios.module';
+import { FlarmOgnModule } from './flarm-ogn/flarm-ogn.module';
+import { PegasusModule } from './pegasus/pegasus.module';
 import { EventEmitterModule } from '@nestjs/event-emitter';
 import { ConfigModule } from '@nestjs/config';
+import { ScheduleModule } from '@nestjs/schedule';
 import { ProcessingModule } from './processing/processing.module';
-import { ServicesModule } from './services/services.module';
-import config from './config/configuration';
+import { MqttModule } from './mqtt/mqtt.module';
+import config from './common/configuration';
 
 
 @Module({
@@ -14,11 +16,13 @@ import config from './config/configuration';
           isGlobal: true,
           load: [config]
       }),
-      InboundModule,
-      OutboundModule,
+      ScheduleModule.forRoot(),
+      HeliosModule,
+      FlarmOgnModule,
+      PegasusModule,
       EventEmitterModule.forRoot(),
       ProcessingModule,
-      ServicesModule],
+      MqttModule],
   controllers: [],
   providers: []
 })

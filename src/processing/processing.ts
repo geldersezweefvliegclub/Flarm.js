@@ -1,16 +1,16 @@
 import {Injectable, Logger, OnModuleDestroy, OnModuleInit} from "@nestjs/common";
 import {EventEmitter2, OnEvent} from "@nestjs/event-emitter";
-import {FlarmEvents} from "../../shared/FlarmEvents";
-import {FlarmData} from "../../inbound/flarm-ogn/flarm-ogn.service";
-import {LoginService} from "../../services/apiservice/login.service";
-import {HeliosInboundService} from "../../inbound/helios/helios-inbound.service";
-import {HeliosStartDataset, HeliosVliegtuigenDataset} from "../../types/Helios";
+import {FlarmEvents} from "../shared/FlarmEvents";
+import {FlarmData} from "../flarm-ogn/flarm-ogn.service";
+import {LoginService} from "../helios/apiservice/login.service";
+import {HeliosInboundWorker} from "../helios/helios-inbound-worker";
+import {HeliosStartDataset, HeliosVliegtuigenDataset} from "../types/Helios";
 import {ConfigService} from "@nestjs/config";
-import {GliderEvents} from "../../shared/GliderEvents";
-import {GliderStatus} from "../../shared/GliderStatus";
+import {GliderEvents} from "../shared/GliderEvents";
+import {GliderStatus} from "../shared/GliderStatus";
 import {DateTime, Interval} from "luxon";
-import {WebSocketEvents} from "../../shared/WebSocketEvents";
-import {HeliosEvents} from "../../shared/HeliosEvents";
+import {WebSocketEvents} from "../shared/WebSocketEvents";
+import {HeliosEvents} from "../shared/HeliosEvents";
 
 export enum StartMethode {
     Lier = 550,
@@ -57,7 +57,7 @@ export class ProcessingService implements  OnModuleInit, OnModuleDestroy  {
     constructor(private readonly eventEmitter: EventEmitter2,
                 private readonly loginservice: LoginService,
                 private readonly configService: ConfigService,
-                private readonly heliosInboundService: HeliosInboundService) {
+                private readonly heliosInboundService: HeliosInboundWorker) {
         this.logger = new Logger(ProcessingService.name);
         this.DelayedLandingIntervalId = setInterval(() => this.delayedLanding(), 0.50 * 60*1000);
         this.StuurAllesIntervalId = setInterval(() => this.stuurAlles(), 5 * 60*1000);   // iedere 5 minuten alle vliegtuigen sturen
@@ -248,7 +248,7 @@ export class ProcessingService implements  OnModuleInit, OnModuleDestroy  {
         else
             this.FlarmDataStore[idx] = fdContainer;
 
-        this.logger.log(`Ontvangen: ${fdContainer.flarmData?.flarmId} ${fdContainer.REG_CALL} start ID: ${fdContainer?.startID}  GS:${fdContainer?.flarmData?.speed}|${fdContainer?.flarmData?.kalman_speed} ALT:${fdContainer?.flarmData?.altitude_agl}|${fdContainer?.flarmData?.kalman_altitude_agl} ${fdContainer?.flarmData?.climbRate}|${fdContainer?.flarmData?.kalman_climb} ${GliderStatus[fdContainer.status]}`);
+        this.logger.debug(`Ontvangen: ${fdContainer.flarmData?.flarmId} ${fdContainer.REG_CALL} start ID: ${fdContainer?.startID}  GS:${fdContainer?.flarmData?.speed}|${fdContainer?.flarmData?.kalman_speed} ALT:${fdContainer?.flarmData?.altitude_agl}|${fdContainer?.flarmData?.kalman_altitude_agl} ${fdContainer?.flarmData?.climbRate}|${fdContainer?.flarmData?.kalman_climb} ${GliderStatus[fdContainer.status]}`);
     }
 
     // Er is al een tijd geen update ontvangen van een vliegtuig. Als het vliegtuig op circuit of landing is, dan nemen we aan dat het vliegtuig geland is.
@@ -309,14 +309,13 @@ export class ProcessingService implements  OnModuleInit, OnModuleDestroy  {
     }
 
     zoekSleep(flarmID: string, speed: number, altitude: number, course: number): number {
-        const idx = this.FlarmDataStore.findIndex((fd) => {
+        return this.FlarmDataStore.findIndex((fd) => {
             const diffSpeed = Math.abs(fd.flarmData.kalman_speed - speed);
             const diffAltitude = Math.abs(fd.flarmData.kalman_altitude_agl - altitude);
             const diffCourse = Math.abs(fd.flarmData.course - course);
 
             return flarmID !== fd.flarmData.flarmId && diffSpeed < 10 && diffAltitude < 20 && diffCourse < 30;
         });
-        return idx;
     }
 
 

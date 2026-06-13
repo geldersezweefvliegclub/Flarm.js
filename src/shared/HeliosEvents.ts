@@ -1,5 +1,5 @@
 export enum HeliosEvents {
-    StartsGeladen = 'helios.starts',
-    OnStartRecorded = 'helios.started.recorded',
-    OnLandedRecorded = 'helios.landed.recorded',
+    StartsGeladen      = 'helios.starts',
+    OnStartRecorded    = 'helios.start.recorded',
+    OnLandedRecorded   = 'helios.landed.recorded',
 }

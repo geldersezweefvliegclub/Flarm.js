@@ -1,12 +1,10 @@
 import { Module } from '@nestjs/common';
-import {ProcessingService} from "./processing/processing";
-import {ServicesModule} from "../services/services.module";
-import {HeliosInboundService} from "../inbound/helios/helios-inbound.service";
-import {InboundModule} from "../inbound/inbound.module";
+import {ProcessingService} from "./processing";
+import {HeliosModule} from "../helios/helios.module";
 
 
 @Module({
-    imports: [ServicesModule, InboundModule],
+    imports: [HeliosModule],
     providers: [ProcessingService]
 })
 export class ProcessingModule {}
