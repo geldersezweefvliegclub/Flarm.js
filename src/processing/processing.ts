@@ -358,7 +358,7 @@ export class ProcessingService implements  OnModuleInit, OnModuleDestroy  {
 
     @OnEvent(FlarmEvents.LostFlarm)
     handleFlarmLostEvent(FlarmID: string) {
-        this.logger.log("handleFlarmLostEvent ", FlarmID);
+        this.logger.verbose("handleFlarmLostEvent ", FlarmID);
 
         const idx = this.FlarmDataStore.findIndex((fd) => fd.flarmData.flarmId === FlarmID);
         if (idx >0 ) {
@@ -368,7 +368,7 @@ export class ProcessingService implements  OnModuleInit, OnModuleDestroy  {
 
     @OnEvent(WebSocketEvents.OnConnect)
     stuurAlles() {
-        this.logger.log("stuurAlles ");
+        this.logger.verbose("Stuur alles naar websocket");
         this.FlarmDataStore.forEach((fd) => {
             this.eventEmitter.emit(WebSocketEvents.PublishFlarm, fd);
         });

@@ -39,7 +39,6 @@
     "nest-winston": "^1.10.2",
     "reflect-metadata": "^0.2.0",
     "rxjs": "^7.8.1",
-    "uuid": "^14.0.0",
     "xregexp": "^5.1.1"
   },
   "devDependencies": {

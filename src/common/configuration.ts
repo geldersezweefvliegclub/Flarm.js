@@ -2,7 +2,7 @@
 import * as fs from 'fs';
 import * as yaml from 'js-yaml';
 import { join } from 'path';
-import {v4 as uuidv4} from 'uuid';
+import { randomUUID } from 'crypto';
 import { dayOfYear } from './utils';
 import {Logger} from "@nestjs/common";
 
@@ -74,7 +74,7 @@ export default () => {
             Banen: undefined
         }
     }
-    flarmConfig.OGN.aprsUser = uuidv4().split('-')[0].toUpperCase();
+    flarmConfig.OGN.aprsUser = randomUUID().split('-')[0].toUpperCase();
 
     const configFile = process.env.FLARM_CONFIG ?? join(process.cwd(), '/', YAML_CONFIG_FILENAME)
     const logger = new Logger()

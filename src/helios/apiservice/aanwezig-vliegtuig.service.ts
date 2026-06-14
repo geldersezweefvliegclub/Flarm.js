@@ -50,7 +50,7 @@ export class AanwezigVliegtuigService {
             return false;
         }
 
-        const idx = this.aangemeldCache.dataset.findIndex((vliegtuig) => vliegtuig.ID === vliegtuigID);
+        const idx = this.aangemeldCache.dataset.findIndex((vliegtuig) => vliegtuig.VLIEGTUIG_ID === vliegtuigID);
         return idx !== -1;
     }
 
