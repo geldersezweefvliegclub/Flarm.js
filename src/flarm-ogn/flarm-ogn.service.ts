@@ -8,7 +8,7 @@ import {DateTime, Interval} from 'luxon';
 import {KalmanFilter} from "./KalmanFilter";
 import * as fs from "node:fs";
 import * as readline from "node:readline";
-import {OgnRecorder} from "./recorder";
+import {OgnRecorder} from "./ogn-recorder";
 
 export class FlarmData extends AprsMessage
 {

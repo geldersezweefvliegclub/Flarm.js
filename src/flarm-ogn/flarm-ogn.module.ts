@@ -1,6 +1,6 @@
 import { Module } from '@nestjs/common';
 import { FlarmOgnService } from './flarm-ogn.service';
-import { OgnRecorder } from './recorder';
+import { OgnRecorder } from './ogn-recorder';
 
 @Module({
   providers: [FlarmOgnService, OgnRecorder]
