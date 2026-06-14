@@ -11,6 +11,7 @@ import {DateTime, Interval} from "luxon";
 import {WebSocketEvents} from "../shared/WebSocketEvents";
 import {HeliosEvents} from "../shared/HeliosEvents";
 import {ParsedLogger} from "./parsed-logger";
+import {Cron, CronExpression} from "@nestjs/schedule";
 
 export enum StartMethode {
     Lier = 550,
@@ -51,7 +52,6 @@ export class ProcessingService implements  OnModuleInit, OnModuleDestroy  {
     private readonly logger = new Logger(ProcessingService.name);
     private FlarmDataStore: FlarmDataWithStatus[] = [];
     private readonly DelayedLandingIntervalId: NodeJS.Timeout;
-    private readonly StuurAllesIntervalId: NodeJS.Timeout;
 
     constructor(private readonly eventEmitter: EventEmitter2,
                 private readonly loginservice: LoginService,
@@ -59,7 +59,6 @@ export class ProcessingService implements  OnModuleInit, OnModuleDestroy  {
                 private readonly parsedLogger: ParsedLogger) {
         this.logger = new Logger(ProcessingService.name);
         this.DelayedLandingIntervalId = setInterval(() => this.delayedLanding(), 0.50 * 60*1000);
-        this.StuurAllesIntervalId = setInterval(() => this.stuurAlles(), 5 * 60*1000);   // iedere 5 minuten alle vliegtuigen sturen
     }
 
     onModuleInit() {
@@ -73,7 +72,6 @@ export class ProcessingService implements  OnModuleInit, OnModuleDestroy  {
     onModuleDestroy() {
         this.logger.log('ProcessingService has been destroyed.');
         clearInterval(this.DelayedLandingIntervalId);
-        clearInterval(this.StuurAllesIntervalId);
     }
 
     @OnEvent(FlarmEvents.DataReceived)
@@ -366,6 +364,7 @@ export class ProcessingService implements  OnModuleInit, OnModuleDestroy  {
         }
     }
 
+    @Cron(CronExpression.EVERY_5_MINUTES)
     @OnEvent(WebSocketEvents.OnConnect)
     stuurAlles() {
         this.logger.verbose("Stuur alles naar websocket");
