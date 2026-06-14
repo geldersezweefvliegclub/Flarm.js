@@ -88,7 +88,6 @@ export class ProcessingService implements  OnModuleInit, OnModuleDestroy  {
 
         const start = this.heliosInboundService.getStart(vliegtuig.ID);
         const fdContainer = new FlarmDataWithStatus(payload, vliegtuig, start);
-        this.parsedLogger.record(fdContainer);
 
         const idx = this.FlarmDataStore.findIndex((fd) => fd?.flarmData?.flarmId === fdContainer.flarmData.flarmId);
         const previousUpdate: FlarmDataWithStatus =  this.FlarmDataStore[idx];
@@ -237,6 +236,7 @@ export class ProcessingService implements  OnModuleInit, OnModuleDestroy  {
                         this.checkAanmelden(fdContainer);
                     }
                 }
+                this.parsedLogger.record(fdContainer);
             }
         }
         this.eventEmitter.emit(WebSocketEvents.PublishFlarm, fdContainer);
