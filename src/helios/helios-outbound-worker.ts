@@ -21,7 +21,7 @@ export class HeliosOutboundWorker implements OnModuleInit {
     }
 
     @OnEvent(GliderEvents.GliderStart)
-    handleStartReceivedEvent(startID:number, startMethode: StartMethode, sleepKistID: number)
+    handleStartReceivedEvent(startID:number)
     {
         this.startsService.getStart(startID).then((start: HeliosStart) => {
             if((start.STARTTIJD !== undefined) && (start.LANDINGSTIJD !== null))
@@ -36,8 +36,6 @@ export class HeliosOutboundWorker implements OnModuleInit {
                 {
                     ID: startID,
                     STARTTIJD: DateTime.now().toFormat('HH:mm'),
-                    SLEEPKIST_ID: sleepKistID,
-                    OPMERKINGEN: (startMethode !== undefined && startMethode !== start.STARTMETHODE_ID) ? `Controleer startmethode, lijkt ${StartMethode[startMethode]} te zijn` : start.OPMERKINGEN
                 }
 
                 this.startsService.updateStart(s).then(() => {

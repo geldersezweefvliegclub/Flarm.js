@@ -30,10 +30,7 @@ export class FlarmDataWithStatus {
     vliegtuigID?: number
     startID?: number
 
-    startMethode?: StartMethode;
     bijOnsGestart?: boolean;
-    gesleeptStartID?: number;               // ID van de start van het zweefvliegtuig dat gesleept wordt
-    gesleeptRegCall?: string;               // registratie van het zweefvliegtuig dat gesleept wordt
     maxHoogte?: number;                     // maximale hoogte van het sleepvliegtuig tijdens de vlucht
 
     constructor(fData: FlarmData, vliegtuig: HeliosVliegtuigenDataset, start: HeliosStartDataset) {
@@ -99,9 +96,6 @@ export class ProcessingService implements  OnModuleInit, OnModuleDestroy  {
             fdContainer.starttijd = previousUpdate.starttijd;
             fdContainer.maxHoogte = previousUpdate.maxHoogte;
             fdContainer.landingstijd = previousUpdate.landingstijd;
-            fdContainer.startMethode = previousUpdate.startMethode;
-            fdContainer.gesleeptStartID = previousUpdate.gesleeptStartID;
-            fdContainer.gesleeptRegCall = previousUpdate.gesleeptRegCall;
             fdContainer.bijOnsGestart = previousUpdate.bijOnsGestart;
         }
 
@@ -152,11 +146,12 @@ export class ProcessingService implements  OnModuleInit, OnModuleDestroy  {
                     fdContainer.starttijd = DateTime.now().toFormat('HH:mm');
                     fdContainer.landingstijd = "";
 
-                    const sleepIdx = this.zoekSleep(fdContainer.flarmData.flarmId, fdContainer.flarmData.kalman_speed, fdContainer.flarmData.kalman_altitude_agl, fdContainer.flarmData.course);
-                    const sleepKist = (sleepIdx < 0) ? undefined : this.FlarmDataStore[sleepIdx];
+                    //const sleepIdx = fdContainer.SLEEPKIST === true ? -1 : this.zoekSleep(fdContainer.flarmData.flarmId, fdContainer.flarmData.kalman_speed, fdContainer.flarmData.kalman_altitude_agl, fdContainer.flarmData.course);
+                    //const sleepKist = (sleepIdx < 0) ? undefined : this.FlarmDataStore[sleepIdx];
 
                     fdContainer.bijOnsGestart = this.heliosInboundService.isInsidePolygon([fdContainer.flarmData.longitude, fdContainer.flarmData.latitude]);
 
+                    /*
                     // bepaal de startmethode
                     if (fdContainer.flarmData.kalman_climb > 10)            // climb rate > 10 m/s = lieren
                     {
@@ -188,11 +183,12 @@ export class ProcessingService implements  OnModuleInit, OnModuleDestroy  {
                             }
                         }
                     }
+                    */
 
                     if (start)
                     {
                         this.logger.log(`------- STARTING: ${vliegtuig.REG_CALL} ${start?.ID}`);
-                        this.eventEmitter.emit(GliderEvents.GliderStart, start?.ID, fdContainer.startMethode, sleepKist?.vliegtuigID);
+                        this.eventEmitter.emit(GliderEvents.GliderStart, start?.ID);
                     }
                     else
                     {
@@ -226,15 +222,13 @@ export class ProcessingService implements  OnModuleInit, OnModuleDestroy  {
                             // als het sleepvliegtuig geland is, dan hoogte invullen voor gesleept vliegtuig
                             if (vliegtuig.SLEEPKIST)
                             {
-                                this.eventEmitter.emit(GliderEvents.SleepHoogte, fdContainer.gesleeptStartID, fdContainer.maxHoogte);
-                                fdContainer.gesleeptStartID = undefined;
-                                fdContainer.gesleeptRegCall = undefined;
+                                this.eventEmitter.emit(GliderEvents.SleepHoogte, fdContainer.maxHoogte);
                                 fdContainer.maxHoogte = undefined;
                             }
                         }
-                        fdContainer.status = GliderStatus.On_Ground;
                         this.checkAanmelden(fdContainer);
                     }
+                    fdContainer.status = GliderStatus.On_Ground;
                 }
                 this.parsedLogger.record(fdContainer);
             }
@@ -308,11 +302,13 @@ export class ProcessingService implements  OnModuleInit, OnModuleDestroy  {
 
     zoekSleep(flarmID: string, speed: number, altitude: number, course: number): number {
         return this.FlarmDataStore.findIndex((fd) => {
+            if (!fd.SLEEPKIST) return false;
+
             const diffSpeed = Math.abs(fd.flarmData.kalman_speed - speed);
             const diffAltitude = Math.abs(fd.flarmData.kalman_altitude_agl - altitude);
             const diffCourse = Math.abs(fd.flarmData.course - course);
 
-            return flarmID !== fd.flarmData.flarmId && diffSpeed < 10 && diffAltitude < 20 && diffCourse < 30;
+            return flarmID !== fd.flarmData.flarmId && diffSpeed < 10 && diffAltitude < 50 && diffCourse < 30;
         });
     }
 
