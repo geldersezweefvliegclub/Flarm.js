@@ -26,11 +26,11 @@ export class HeliosOutboundWorker implements OnModuleInit {
         this.startsService.getStart(startID).then((start: HeliosStart) => {
             if((start.STARTTIJD !== undefined) && (start.LANDINGSTIJD !== null))
             {
-                this.logger.log('Starttijd al aanwezig in Helios');
+                this.logger.warn('Starttijd al aanwezig in Helios');
             }
             else
             {
-                this.logger.log('Starttijd wordt opgeslagen in Helios');
+                this.logger.verbose('Starttijd wordt opgeslagen in Helios');
 
                 const s: HeliosStart =
                 {
@@ -56,10 +56,10 @@ export class HeliosOutboundWorker implements OnModuleInit {
 
             if ((start.LANDINGSTIJD !== undefined) && (start.LANDINGSTIJD !== null))
             {
-                this.logger.log('Landingstijd al aanwezig Helios');
+                this.logger.warn('Landingstijd al aanwezig Helios');
             }
             else {
-                this.logger.log('Landingstijd wordt opgeslagen in Helios');
+                this.logger.verbose('Landingstijd wordt opgeslagen in Helios');
 
                 const s: HeliosStart = {
                     ID: startID

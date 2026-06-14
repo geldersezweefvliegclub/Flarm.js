@@ -32,7 +32,7 @@ export class WebsocketGateway implements OnGatewayConnection, OnGatewayDisconnec
 
     @OnEvent(WebSocketEvents.SendStartMessage)
     SendStartMessage(payload:any){
-        this.logger.log('Sending start message');
+        this.logger.verbose('Sending start message');
         this.server.emit('start', payload);
     }
 }
