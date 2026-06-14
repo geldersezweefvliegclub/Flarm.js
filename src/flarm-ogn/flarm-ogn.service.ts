@@ -8,6 +8,7 @@ import {DateTime, Interval} from 'luxon';
 import {KalmanFilter} from "./KalmanFilter";
 import * as fs from "node:fs";
 import * as readline from "node:readline";
+import {OgnRecorder} from "./recorder";
 
 export class FlarmData extends AprsMessage
 {
@@ -40,7 +41,8 @@ export class FlarmOgnService implements  OnModuleInit, OnModuleDestroy
     private veldHoogte: number = 0;
 
     constructor(private readonly configService: ConfigService,
-                private readonly eventEmitter: EventEmitter2) {
+                private readonly eventEmitter: EventEmitter2,
+                private readonly recorder: OgnRecorder) {
     }
 
     onModuleInit(): any {
@@ -145,6 +147,7 @@ export class FlarmOgnService implements  OnModuleInit, OnModuleDestroy
 
                 if (!ignore) // Ignore comments
                 {
+                    this.recorder.record(line);
                     const msg: FlarmData = new AprsMessage(line) as FlarmData;
                     msg.altitude_agl = Math.max(0, (msg.altitude - this.veldHoogte));       // mag nooit negatief zijn
 
