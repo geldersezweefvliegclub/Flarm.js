@@ -5,12 +5,12 @@ import {FlarmData} from "../flarm-ogn/flarm-ogn.service";
 import {LoginService} from "../helios/apiservice/login.service";
 import {HeliosInboundWorker} from "../helios/helios-inbound-worker";
 import {HeliosStartDataset, HeliosVliegtuigenDataset} from "../types/Helios";
-import {ConfigService} from "@nestjs/config";
 import {GliderEvents} from "../shared/GliderEvents";
 import {GliderStatus} from "../shared/GliderStatus";
 import {DateTime, Interval} from "luxon";
 import {WebSocketEvents} from "../shared/WebSocketEvents";
 import {HeliosEvents} from "../shared/HeliosEvents";
+import {ParsedLogger} from "./parsed-logger";
 
 export enum StartMethode {
     Lier = 550,
@@ -50,14 +50,13 @@ export class FlarmDataWithStatus {
 export class ProcessingService implements  OnModuleInit, OnModuleDestroy  {
     private readonly logger = new Logger(ProcessingService.name);
     private FlarmDataStore: FlarmDataWithStatus[] = [];
-    private DelayedLandingIntervalId: NodeJS.Timeout;
-    private StuurAllesIntervalId: NodeJS.Timeout;
-
+    private readonly DelayedLandingIntervalId: NodeJS.Timeout;
+    private readonly StuurAllesIntervalId: NodeJS.Timeout;
 
     constructor(private readonly eventEmitter: EventEmitter2,
                 private readonly loginservice: LoginService,
-                private readonly configService: ConfigService,
-                private readonly heliosInboundService: HeliosInboundWorker) {
+                private readonly heliosInboundService: HeliosInboundWorker,
+                private readonly parsedLogger: ParsedLogger) {
         this.logger = new Logger(ProcessingService.name);
         this.DelayedLandingIntervalId = setInterval(() => this.delayedLanding(), 0.50 * 60*1000);
         this.StuurAllesIntervalId = setInterval(() => this.stuurAlles(), 5 * 60*1000);   // iedere 5 minuten alle vliegtuigen sturen
@@ -91,6 +90,7 @@ export class ProcessingService implements  OnModuleInit, OnModuleDestroy  {
 
         const start = this.heliosInboundService.getStart(vliegtuig.ID);
         const fdContainer = new FlarmDataWithStatus(payload, vliegtuig, start);
+        this.parsedLogger.record(fdContainer);
 
         const idx = this.FlarmDataStore.findIndex((fd) => fd.flarmData.flarmId === fdContainer.flarmData.flarmId);
         const previousUpdate: FlarmDataWithStatus =  this.FlarmDataStore[idx];
@@ -259,7 +259,7 @@ export class ProcessingService implements  OnModuleInit, OnModuleDestroy  {
 
         const now = DateTime.now();``
 
-        for (var i=0 ; i < this.FlarmDataStore.length; i++) {
+        for (let i=0 ; i < this.FlarmDataStore.length; i++) {
             const fdContainer = this.FlarmDataStore[i];
 
             if (!fdContainer.flarmData) {
@@ -341,7 +341,7 @@ export class ProcessingService implements  OnModuleInit, OnModuleDestroy  {
     @OnEvent(HeliosEvents.StartsGeladen)
     mapStartOnFlarm()
     {
-        for (var i=0; i < this.FlarmDataStore.length; i++)
+        for (let i=0; i < this.FlarmDataStore.length; i++)
         {
             const nweStart = this.heliosInboundService.getStart( this.FlarmDataStore[i].vliegtuigID);
 
