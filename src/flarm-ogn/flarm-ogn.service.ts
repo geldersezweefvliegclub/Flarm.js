@@ -7,6 +7,7 @@ import {ConfigService} from "@nestjs/config";
 import {DateTime, Interval} from 'luxon';
 import {KalmanFilter3D} from "./KalmanFilter3D";
 import * as fs from "node:fs";
+import * as zlib from "node:zlib";
 import * as readline from "node:readline";
 import {OgnRecorder} from "./ogn-recorder";
 
@@ -49,12 +50,20 @@ export class FlarmOgnService implements  OnModuleInit, OnModuleDestroy
         this.removeLostIntervalId = setInterval(() => this.removeLost(), 1 * 60 * 1000);
 
         if (config.simulator) {
-            this.logger.log('Running in simulator mode');
-            this.runSimulator(config.simulator);
+            this.logger.log('------------- RUNNING IN SIMULATOR MODE -------------');
+            setTimeout(() =>
+            {
+                this.runSimulator(config.simulator);
+            }, 15000); // Wait 15 seconds before start simulator
             return;
         }
-
-        setTimeout(() => {this.connectToAprsServer();}, 15000); // Wait 15 seconds before connecting
+        else
+        {
+            setTimeout(() =>
+            {
+                this.connectToAprsServer();
+            }, 15000); // Wait 15 seconds before connecting
+        }
 
         // Send a keep-alive message to the server every 5 minutes
         this.keepAliveIntervalId = setInterval(() => this.client.write('# Keep alive\n'), 5 * 60 * 1000);
@@ -183,38 +192,48 @@ export class FlarmOgnService implements  OnModuleInit, OnModuleDestroy
     }
 
     async runSimulator(filename: string) {
-        const fileStream = fs.createReadStream(filename);
+        if (!fs.existsSync(filename)) {
+            this.logger.error(`Simulator file does not exist: ${filename}`);
+            return;
+        }
 
-        const rl = readline.createInterface({
-            input: fileStream,
-            crlfDelay: Infinity
-        });
-        // Note: we use the crlfDelay option to recognize all instances of CR LF
-        // ('\r\n') in input.txt as a single line break.
-        let displayTijd: DateTime = DateTime.now();
+        this.logger.log(`Simulator: replaying ${filename}`);
+
+        const raw = fs.createReadStream(filename);
+        const input = filename.endsWith('.gz') ? raw.pipe(zlib.createGunzip()) : raw;
+        const rl = readline.createInterface({ input, crlfDelay: Infinity });
+
+        let firstTimestamp: DateTime | null = null;
+        let replayStart: DateTime | null = null;
+        let lastLoggedSecond = -1;
 
         for await (const line of rl) {
-            if (line.includes('| OGN:'))
-            {
-                const timestamp = DateTime.fromSQL(line.split('| OGN:')[0]);
+            const spaceIdx = line.indexOf(' ');
+            if (spaceIdx < 0) continue;
 
-                if (timestamp.hour * 100 + timestamp.minute > 1354)
-                {
-                    while (DateTime.now().second != timestamp.second)
-                    {
-                        await this.sleep(100);
-                    }
+            const timestamp = DateTime.fromISO(line.substring(0, spaceIdx));
+            if (!timestamp.isValid) continue;
 
-                    if (displayTijd.second != timestamp.second)
-                    {
-                        displayTijd = timestamp;
-                        this.logger.log('Simulator: ' + displayTijd.toFormat('HH:mm:ss'));
-                    }
-
-                    this.handleIncomingData(line.split('| OGN:')[1] + '\r\n');
-                }
+            if (firstTimestamp === null) {
+                firstTimestamp = timestamp;
+                replayStart = DateTime.now();
             }
+
+            // Preserve original inter-message timing
+            const waitMs = timestamp.diff(firstTimestamp).toMillis() - DateTime.now().diff(replayStart).toMillis();
+            if (waitMs > 0) {
+                await this.sleep(waitMs);
+            }
+
+            if (timestamp.second !== lastLoggedSecond) {
+                lastLoggedSecond = timestamp.second;
+                this.logger.log('Simulator: ' + timestamp.toFormat('HH:mm:ss'));
+            }
+
+            this.handleIncomingData(line.substring(spaceIdx + 1) + '\r\n');
         }
+
+        this.logger.log('Simulator: replay complete');
     }
 
     async sleep(ms)
