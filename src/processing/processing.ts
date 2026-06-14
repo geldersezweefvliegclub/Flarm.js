@@ -92,7 +92,7 @@ export class ProcessingService implements  OnModuleInit, OnModuleDestroy  {
         const fdContainer = new FlarmDataWithStatus(payload, vliegtuig, start);
         this.parsedLogger.record(fdContainer);
 
-        const idx = this.FlarmDataStore.findIndex((fd) => fd.flarmData.flarmId === fdContainer.flarmData.flarmId);
+        const idx = this.FlarmDataStore.findIndex((fd) => fd?.flarmData?.flarmId === fdContainer.flarmData.flarmId);
         const previousUpdate: FlarmDataWithStatus =  this.FlarmDataStore[idx];
 
         // overnemen van de status en tijden van het vorige bericht
@@ -360,9 +360,9 @@ export class ProcessingService implements  OnModuleInit, OnModuleDestroy  {
     handleFlarmLostEvent(FlarmID: string) {
         this.logger.verbose("handleFlarmLostEvent ", FlarmID);
 
-        const idx = this.FlarmDataStore.findIndex((fd) => fd.flarmData.flarmId === FlarmID);
-        if (idx >0 ) {
-            delete this.FlarmDataStore[idx];
+        const idx = this.FlarmDataStore.findIndex((fd) => fd?.flarmData?.flarmId === FlarmID);
+        if (idx >= 0) {
+            this.FlarmDataStore.splice(idx, 1);
         }
     }
 
