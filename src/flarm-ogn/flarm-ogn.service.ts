@@ -5,7 +5,7 @@ import {EventEmitter2} from "@nestjs/event-emitter";
 import {AprsMessage} from "./AprsMessage";
 import {ConfigService} from "@nestjs/config";
 import {DateTime, Interval} from 'luxon';
-import {KalmanFilter} from "./KalmanFilter";
+import {KalmanFilter3D} from "./KalmanFilter3D";
 import * as fs from "node:fs";
 import * as readline from "node:readline";
 import {OgnRecorder} from "./ogn-recorder";
@@ -17,10 +17,8 @@ export class FlarmData extends AprsMessage
     kalman_speed: number;
     kalman_climb: number;
     kalman_altitude_agl: number;
-}
-
-interface kalmanStore {
-    [key: string] : KalmanFilter;
+    kalman_latitude: number;
+    kalman_longitude: number;
 }
 
 @Injectable()
@@ -34,9 +32,7 @@ export class FlarmOgnService implements  OnModuleInit, OnModuleDestroy
     private unparsedData: string = '';
 
     private flarmOntvangen: DateTime[] = [];
-    private kalmanSpeedContainer: kalmanStore[] = [];
-    private kalmanClimbContainer: kalmanStore[] = [];
-    private kalmanAltitudeContainer: kalmanStore[] = [];
+    private kalmanContainer: { [key: string]: KalmanFilter3D } = {};
 
     private veldHoogte: number = 0;
 
@@ -154,15 +150,15 @@ export class FlarmOgnService implements  OnModuleInit, OnModuleDestroy
                     if (msg.flarmId != null)
                     {
                         if (this.flarmOntvangen[msg.flarmId] == null)
-                        {
-                            this.kalmanSpeedContainer[msg.flarmId] = new KalmanFilter();
-                            this.kalmanClimbContainer[msg.flarmId] = new KalmanFilter();
-                            this.kalmanAltitudeContainer[msg.flarmId] = new KalmanFilter();
-                        }
+                            this.kalmanContainer[msg.flarmId] = new KalmanFilter3D(this.veldHoogte);
 
-                        msg.kalman_speed = Math.round(this.kalmanSpeedContainer[msg.flarmId].filter(msg.speed));
-                        msg.kalman_altitude_agl = Math.round(this.kalmanAltitudeContainer[msg.flarmId].filter(msg.altitude_agl));
-                        msg.kalman_climb = Math.round(100*this.kalmanClimbContainer[msg.flarmId].filter(msg.climbRate)) / 100;
+                        const k = this.kalmanContainer[msg.flarmId].filter(
+                            msg.latitude, msg.longitude, msg.altitude, msg.receivedTime);
+                        msg.kalman_speed        = k.speed;
+                        msg.kalman_altitude_agl = k.altitude_agl;
+                        msg.kalman_climb        = k.climb;
+                        msg.kalman_latitude     = k.latitude;
+                        msg.kalman_longitude    = k.longitude;
 
                         this.flarmOntvangen[msg.flarmId] = DateTime.now();
                         this.eventEmitter.emit(FlarmEvents.DataReceived, msg);
@@ -179,9 +175,7 @@ export class FlarmOgnService implements  OnModuleInit, OnModuleDestroy
             if (diff.length('minutes') > 15)
             {
                 delete this.flarmOntvangen[key];
-                delete this.kalmanSpeedContainer[key];
-                delete this.kalmanClimbContainer[key];
-                delete this.kalmanAltitudeContainer[key];
+                delete this.kalmanContainer[key];
 
                 this.eventEmitter.emit(FlarmEvents.LostFlarm, key);
             }
