@@ -48,6 +48,7 @@ export class FlarmDataWithStatus {
 export class ProcessingService implements  OnModuleInit, OnModuleDestroy  {
     private readonly logger = new Logger(ProcessingService.name);
     private FlarmDataStore: FlarmDataWithStatus[] = [];
+    private positionHistory: Map<string, FlarmData[]> = new Map();
     private readonly DelayedLandingIntervalId: NodeJS.Timeout;
 
     constructor(private readonly eventEmitter: EventEmitter2,
@@ -82,6 +83,8 @@ export class ProcessingService implements  OnModuleInit, OnModuleDestroy  {
         if (vliegtuig === undefined) {
             return;
         }
+
+        this.addToHistory(payload);
 
         const start = this.heliosInboundService.getStart(vliegtuig.ID);
         const fdContainer = new FlarmDataWithStatus(payload, vliegtuig, start);
@@ -189,6 +192,11 @@ export class ProcessingService implements  OnModuleInit, OnModuleDestroy  {
                     {
                         this.logger.log(`------- STARTING: ${vliegtuig.REG_CALL} ${start?.ID}`);
                         this.eventEmitter.emit(GliderEvents.GliderStart, start?.ID);
+
+                        const flarmIdAtStart = fdContainer.flarmData.flarmId;
+                        const vliegtuigAtStart = vliegtuig;
+                        const startIdAtStart = start.ID;
+                        setTimeout(() => this.bepaalStartMethode(flarmIdAtStart, vliegtuigAtStart, startIdAtStart), 30 * 1000);
                     }
                     else
                     {
@@ -313,6 +321,48 @@ export class ProcessingService implements  OnModuleInit, OnModuleDestroy  {
     }
 
 
+    private addToHistory(data: FlarmData): void {
+        const id = data.flarmId;
+        if (!this.positionHistory.has(id)) {
+            this.positionHistory.set(id, []);
+        }
+        const history = this.positionHistory.get(id);
+        history.push(data);
+
+        const cutoff = data.receivedTime.minus({ minutes: 3 });
+        this.positionHistory.set(id, history.filter(m => m.receivedTime > cutoff));
+    }
+
+    private bepaalStartMethode(flarmId: string, vliegtuig: HeliosVliegtuigenDataset, startId: number): void {
+        const history = this.positionHistory.get(flarmId) ?? [];
+
+        // Look at the 40-second takeoff window leading up to this call
+        const cutoff = DateTime.now().minus({ seconds: 40 });
+        const takeoffWindow = history.filter(m => m.receivedTime > cutoff);
+
+        const maxClimb = takeoffWindow.length > 0
+            ? Math.max(...takeoffWindow.map(m => m.kalman_climb ?? m.climbRate ?? 0))
+            : 0;
+
+        const lastMsg = takeoffWindow[takeoffWindow.length - 1];
+        const hasTowPlane = lastMsg != null &&
+            this.zoekSleep(flarmId, lastMsg.kalman_speed, lastMsg.kalman_altitude_agl, lastMsg.course) >= 0;
+
+        let startMethode: StartMethode;
+        if (hasTowPlane) {
+            startMethode = StartMethode.Sleep;
+        } else if (maxClimb > 5) {
+            startMethode = StartMethode.Lier;
+        } else if (vliegtuig?.ZELFSTART) {
+            startMethode = StartMethode.Zelfstart;
+        } else {
+            startMethode = StartMethode.Lier;
+        }
+
+        this.logger.log(`StartMethode: ${vliegtuig?.REG_CALL} → ${StartMethode[startMethode]} (maxClimb: ${maxClimb.toFixed(1)} m/s, towPlane: ${hasTowPlane})`);
+        this.eventEmitter.emit(GliderEvents.StartMethodeDetermined, startId, startMethode);
+    }
+
     checkAanmelden(payload: FlarmDataWithStatus)
     {
         if (!payload.vliegtuigID)
@@ -358,6 +408,7 @@ export class ProcessingService implements  OnModuleInit, OnModuleDestroy  {
         if (idx >= 0) {
             this.FlarmDataStore.splice(idx, 1);
         }
+        this.positionHistory.delete(FlarmID);
     }
 
     @Cron(CronExpression.EVERY_5_MINUTES)
