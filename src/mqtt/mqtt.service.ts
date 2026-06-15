@@ -75,10 +75,10 @@ export class MqttService implements OnApplicationBootstrap, OnApplicationShutdow
     );
 
     switch (raw.table) {
-      case 'startlijst':        this.eventEmitter.emit(MQTT_STARTLIJST,  event); break;
-      case 'vliegtuigen':       this.eventEmitter.emit(MQTT_VLIEGTUIGEN, event); break;
-      case 'daginfo':           this.eventEmitter.emit(MQTT_DAGINFO,     event); break;
-      case 'aanwezig_vliegtuig':this.eventEmitter.emit(MQTT_AANWEZIG,    event); break;
+      case 'oper_startlijst':        this.eventEmitter.emit(MQTT_STARTLIJST,  event); break;
+      case 'ref_vliegtuigen':        this.eventEmitter.emit(MQTT_VLIEGTUIGEN, event); break;
+      case 'oper_daginfo':           this.eventEmitter.emit(MQTT_DAGINFO,     event); break;
+      case 'oper_aanwezig_vliegtuig':this.eventEmitter.emit(MQTT_AANWEZIG,    event); break;
       default:
         this.logger.debug(`No handler for table: ${raw.table}`);
     }

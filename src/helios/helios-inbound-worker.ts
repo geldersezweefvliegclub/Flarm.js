@@ -61,6 +61,10 @@ export class HeliosInboundWorker implements OnModuleInit {
     @OnEvent(MQTT_STARTLIJST)
     onStartlijstUpdated(_event: HeliosMqttEvent): void {
         const updatedStart = _event.resultaat as unknown as HeliosStartDataset;
+
+        if (updatedStart.DATUM !== DateTime.now().toISODate())
+            return;
+
         const idx = this.startsStore.findIndex((s) => s.ID === _event.recordId);
 
         if (idx >= 0) {
