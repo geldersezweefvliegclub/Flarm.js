@@ -5,6 +5,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import * as zlib from 'zlib';
 import { pipeline } from 'stream/promises';
+import { ConfigService } from '@nestjs/config';
 
 const TIMEZONE = 'Europe/Amsterdam';
 
@@ -12,11 +13,13 @@ const TIMEZONE = 'Europe/Amsterdam';
 export class OgnRecorder implements OnApplicationBootstrap, OnApplicationShutdown {
     private readonly logger = new Logger(OgnRecorder.name);
     private readonly logDir: string;
+    private readonly simulatorActive: boolean;
     private writeStream: fs.WriteStream | null = null;
     private currentHour: string | null = null;
 
-    constructor() {
+    constructor(private readonly configService: ConfigService) {
         this.logDir = process.env.OGN_LOG_DIR ?? '';
+        this.simulatorActive = !!this.configService.get('OGN').simulator;
     }
 
     onApplicationBootstrap(): void {
@@ -35,7 +38,7 @@ export class OgnRecorder implements OnApplicationBootstrap, OnApplicationShutdow
     }
 
     record(rawLine: string): void {
-        if (!this.logDir) return;
+        if (!this.logDir || this.simulatorActive) return;
 
         const now = DateTime.now().setZone(TIMEZONE);
         const hour = this.hourTag(now);
@@ -103,8 +106,14 @@ export class OgnRecorder implements OnApplicationBootstrap, OnApplicationShutdow
 
         for (const file of files) {
             const src = path.join(this.logDir, file);
-            const dst = src + '.gz';
 
+            if (fs.statSync(src).size === 0) {
+                fs.unlinkSync(src);
+                this.logger.log(`Deleted empty file ${file}`);
+                continue;
+            }
+
+            const dst = src + '.gz';
             pipeline(
                 fs.createReadStream(src),
                 zlib.createGzip(),

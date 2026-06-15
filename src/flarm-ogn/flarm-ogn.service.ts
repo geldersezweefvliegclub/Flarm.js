@@ -152,12 +152,13 @@ export class FlarmOgnService implements  OnModuleInit, OnModuleDestroy
 
                 if (!ignore) // Ignore comments
                 {
-                    this.recorder.record(line);
                     const msg: FlarmData = new AprsMessage(line) as FlarmData;
                     msg.altitude_agl = Math.max(0, (msg.altitude - this.veldHoogte));       // mag nooit negatief zijn
 
-                    if (msg.flarmId != null)
+                    if (msg.flarmId != null && msg.speed < 300 && msg.altitude_agl < 3500)          // we vliegen nooit sneller dan 300 km/h en niet boven 3500 meter
                     {
+                        this.recorder.record(line);
+
                         if (this.flarmOntvangen[msg.flarmId] == null)
                             this.kalmanContainer[msg.flarmId] = new KalmanFilter3D(this.veldHoogte);
 
