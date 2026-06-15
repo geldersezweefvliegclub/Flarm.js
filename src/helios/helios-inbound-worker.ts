@@ -53,7 +53,7 @@ export class HeliosInboundWorker implements OnModuleInit {
         this.loginservice.relogin();
     }
 
-    @Cron(CronExpression.EVERY_5_MINUTES)
+    @Cron('0 */5 9-21 * * *')
     loadAanwezig(): void {
         this.aanwezigVliegtuigService.getAanwezig();
     }
@@ -72,7 +72,7 @@ export class HeliosInboundWorker implements OnModuleInit {
         this.eventEmitter.emit(HeliosEvents.StartsGeladen);
     }
 
-    @Cron(CronExpression.EVERY_5_MINUTES)
+    @Cron('0 */5 9-21 * * *')
     loadStarts(): void {
         this.logger.verbose('StartsService: loadStarts');
         if (this.vliegveld === undefined) {
@@ -95,7 +95,7 @@ export class HeliosInboundWorker implements OnModuleInit {
         });
     }
 
-    @Cron(CronExpression.EVERY_HOUR)
+    @Cron('0 0 9-21 * * *')
     loadVliegtuigen() {
         this.logger.verbose('VliegtuigenService: loadVliegtuigen');
         this.vliegtuigenService.getVliegtuigen().then((vliegtuigen) => {
@@ -111,7 +111,7 @@ export class HeliosInboundWorker implements OnModuleInit {
         });
     }
 
-    @Cron(CronExpression.EVERY_HOUR)
+    @Cron('0 0 9-21 * * *')
     loadVliegveld() {
         const vliegveldCode = this.configService.get('Vliegveld.code');
 
@@ -175,7 +175,7 @@ export class HeliosInboundWorker implements OnModuleInit {
                 }
             }
 
-            this.logger.log(`Baan code ${baanCode}`);
+            this.logger.verbose(`Baan code ${baanCode}`);
             const bObj = banen.find((baan) => baan.code === baanCode);
 
             if (bObj) {
