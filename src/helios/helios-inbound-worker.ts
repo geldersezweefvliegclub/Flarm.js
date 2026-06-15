@@ -12,7 +12,7 @@ import * as fs from 'fs'
 import {DaginfoService} from "./apiservice/daginfo";
 import {AanwezigVliegtuigService} from "./apiservice/aanwezig-vliegtuig.service";
 import {MQTT_STARTLIJST, HeliosMqttEvent} from "../mqtt/mqtt.events";
-import {Cron, CronExpression} from "@nestjs/schedule";
+import {Cron} from "@nestjs/schedule";
 
 @Injectable()
 export class HeliosInboundWorker implements OnModuleInit {

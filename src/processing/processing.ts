@@ -148,45 +148,7 @@ export class ProcessingService implements  OnModuleInit, OnModuleDestroy  {
 
                     fdContainer.starttijd = DateTime.now().toFormat('HH:mm');
                     fdContainer.landingstijd = "";
-
-                    //const sleepIdx = fdContainer.SLEEPKIST === true ? -1 : this.zoekSleep(fdContainer.flarmData.flarmId, fdContainer.flarmData.kalman_speed, fdContainer.flarmData.kalman_altitude_agl, fdContainer.flarmData.course);
-                    //const sleepKist = (sleepIdx < 0) ? undefined : this.FlarmDataStore[sleepIdx];
-
                     fdContainer.bijOnsGestart = this.heliosInboundService.isInsidePolygon([fdContainer.flarmData.longitude, fdContainer.flarmData.latitude]);
-
-                    /*
-                    // bepaal de startmethode
-                    if (fdContainer.flarmData.kalman_climb > 10)            // climb rate > 10 m/s = lieren
-                    {
-                        fdContainer.startMethode = StartMethode.Lier;
-                    }
-                    else {
-                        if (vliegtuig.ZELFSTART)
-                        {
-                            if (sleepKist)      // als het vliegtuig een zelfstarter is en er is een sleepvliegtuig gevonden, dan is het een toch sleepstart
-                                fdContainer.startMethode = StartMethode.Sleep;
-                            else // als het vliegtuig een zelfstarter is en er is geen sleepvliegtuig gevonden, dan is het een zelfstart
-                                fdContainer.startMethode = StartMethode.Zelfstart;
-                        }
-                        else
-                        {
-                            // als het vliegtuig geen zelfstarter is, dan is het slepen
-                            if (sleepKist)      // sleepvliegtui gevonden, dan is het een sleepstart
-                            {
-                                fdContainer.startMethode = StartMethode.Sleep;
-
-                                // bij de sleepkist de gegevens invullen van het gesleepte vliegtuig
-                                this.FlarmDataStore[sleepIdx].gesleeptStartID = fdContainer.startID;
-                                this.FlarmDataStore[sleepIdx].gesleeptRegCall = vliegtuig.REG_CALL;
-                            }
-                            else
-                            {
-                                // maar zonder sleepvliegtuig is het toch een lierstart
-                                fdContainer.startMethode = StartMethode.Lier;
-                            }
-                        }
-                    }
-                    */
 
                     if (start)
                     {
@@ -198,7 +160,6 @@ export class ProcessingService implements  OnModuleInit, OnModuleDestroy  {
                     else
                     {
                         this.logger.log(`------- STARTING: ${vliegtuig.REG_CALL} NO START`);
-                        setTimeout(() => this.bepaalStartMethode(fdContainer), 30 * 1000);          // TODO, remove this line
                     }
                 }
                 else if (fdContainer.flarmData.kalman_speed <= MIN_SPEED &&
@@ -309,7 +270,6 @@ export class ProcessingService implements  OnModuleInit, OnModuleDestroy  {
     private addToHistory(data: FlarmData): void {
         const flarmId = data.flarmId;
         const vliegtuig = this.heliosInboundService.getVliegtuigByFlarmcode(flarmId);
-        const start = this.heliosInboundService.getStart(vliegtuig.ID);
 
         if (!this.positionHistory.has(flarmId)) {
             this.positionHistory.set(flarmId, []);

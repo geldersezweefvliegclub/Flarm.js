@@ -101,6 +101,29 @@ export class HeliosOutboundWorker implements OnModuleInit {
         }
     }
 
+
+    @OnEvent(GliderEvents.StartMethodeDetermined)
+    handleStartMethodeDeterminedEvent(startID: number, startMethode: StartMethode, SleepkistID: number)
+    {
+        this.startsService.getStart(startID).then((start: HeliosStart) => {
+            if (start.STARTMETHODE_ID == startMethode)
+                return;
+
+            const opm = `Controleer startmethode, ${StartMethode[startMethode]} gedetecteerd` + (start.OPMERKINGEN ? ` : ${start.OPMERKINGEN}` : '')
+            const s: HeliosStart = {
+                ID: startID,
+                OPMERKINGEN: opm,
+                STARTMETHODE_ID: startMethode,
+            }
+
+            this.startsService.updateStart(s).then(() => {
+                this.logger.log(`Startmethode aangepast: ${startID} → ${StartMethode[startMethode]}`);
+            }).catch(() => {
+                this.logger.error(`Error updating startmethode: ${startID}`);
+            });
+        });
+    }
+
     @OnEvent(GliderEvents.GliderAanmelden)
     handleGliderAanmeldenReceivedEvent(vliegtuigID: number, vliegveldID:number)
     {
