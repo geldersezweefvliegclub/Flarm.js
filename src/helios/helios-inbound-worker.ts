@@ -130,6 +130,10 @@ export class HeliosInboundWorker implements OnModuleInit {
         return this.vliegtuigenStore.find((vliegtuig) => vliegtuig.FLARMCODE.toLowerCase().includes(flarmcode.toLowerCase()));
     }
 
+    public getSleepkisten(): HeliosVliegtuigenDataset[] {
+        return this.vliegtuigenStore.filter(vliegtuig => vliegtuig.SLEEPKIST === true);
+    }
+
     public getStart(vliegtuigID: number): HeliosStartDataset {
         const starts : HeliosStartDataset[] = this.startsStore.filter((start) => start.VLIEGTUIG_ID === vliegtuigID).sort(
             (a, b) =>

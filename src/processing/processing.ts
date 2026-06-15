@@ -193,14 +193,12 @@ export class ProcessingService implements  OnModuleInit, OnModuleDestroy  {
                         this.logger.log(`------- STARTING: ${vliegtuig.REG_CALL} ${start?.ID}`);
                         this.eventEmitter.emit(GliderEvents.GliderStart, start?.ID);
 
-                        const flarmIdAtStart = fdContainer.flarmData.flarmId;
-                        const vliegtuigAtStart = vliegtuig;
-                        const startIdAtStart = start.ID;
-                        setTimeout(() => this.bepaalStartMethode(flarmIdAtStart, vliegtuigAtStart, startIdAtStart), 30 * 1000);
+                        setTimeout(() => this.bepaalStartMethode(fdContainer), 30 * 1000);
                     }
                     else
                     {
                         this.logger.log(`------- STARTING: ${vliegtuig.REG_CALL} NO START`);
+                        setTimeout(() => this.bepaalStartMethode(fdContainer), 30 * 1000);          // TODO, remove this line
                     }
                 }
                 else if (fdContainer.flarmData.kalman_speed <= MIN_SPEED &&
@@ -308,59 +306,130 @@ export class ProcessingService implements  OnModuleInit, OnModuleDestroy  {
         }
     }
 
-    zoekSleep(flarmID: string, speed: number, altitude: number, course: number): number {
-        return this.FlarmDataStore.findIndex((fd) => {
-            if (!fd.SLEEPKIST) return false;
-
-            const diffSpeed = Math.abs(fd.flarmData.kalman_speed - speed);
-            const diffAltitude = Math.abs(fd.flarmData.kalman_altitude_agl - altitude);
-            const diffCourse = Math.abs(fd.flarmData.course - course);
-
-            return flarmID !== fd.flarmData.flarmId && diffSpeed < 10 && diffAltitude < 50 && diffCourse < 30;
-        });
-    }
-
-
     private addToHistory(data: FlarmData): void {
-        const id = data.flarmId;
-        if (!this.positionHistory.has(id)) {
-            this.positionHistory.set(id, []);
+        const flarmId = data.flarmId;
+        const vliegtuig = this.heliosInboundService.getVliegtuigByFlarmcode(flarmId);
+        const start = this.heliosInboundService.getStart(vliegtuig.ID);
+
+        if (!this.positionHistory.has(flarmId)) {
+            this.positionHistory.set(flarmId, []);
         }
-        const history = this.positionHistory.get(id);
+        const history = this.positionHistory.get(flarmId);
         history.push(data);
 
         const cutoff = data.receivedTime.minus({ minutes: 3 });
-        this.positionHistory.set(id, history.filter(m => m.receivedTime > cutoff));
+        this.positionHistory.set(flarmId, history.filter(m => m.receivedTime > cutoff));
     }
 
-    private bepaalStartMethode(flarmId: string, vliegtuig: HeliosVliegtuigenDataset, startId: number): void {
+    private bepaalStartMethode(data: FlarmDataWithStatus): void {
+        const flarmId = data.flarmData.flarmId;
         const history = this.positionHistory.get(flarmId) ?? [];
 
-        // Look at the 40-second takeoff window leading up to this call
-        const cutoff = DateTime.now().minus({ seconds: 40 });
-        const takeoffWindow = history.filter(m => m.receivedTime > cutoff);
+        const vliegtuig = this.heliosInboundService.getVliegtuigByFlarmcode(flarmId);
+        const takeoffWindow = history.filter(m => m.speed > 0);
 
         const maxClimb = takeoffWindow.length > 0
             ? Math.max(...takeoffWindow.map(m => m.kalman_climb ?? m.climbRate ?? 0))
             : 0;
 
-        const lastMsg = takeoffWindow[takeoffWindow.length - 1];
-        const hasTowPlane = lastMsg != null &&
-            this.zoekSleep(flarmId, lastMsg.kalman_speed, lastMsg.kalman_altitude_agl, lastMsg.course) >= 0;
+        let sleepkistID = -1
 
         let startMethode: StartMethode;
-        if (hasTowPlane) {
-            startMethode = StartMethode.Sleep;
-        } else if (maxClimb > 5) {
-            startMethode = StartMethode.Lier;
-        } else if (vliegtuig?.ZELFSTART) {
-            startMethode = StartMethode.Zelfstart;
-        } else {
+        if (maxClimb > 10)
+        {
             startMethode = StartMethode.Lier;
         }
+        else
+        {
+            sleepkistID = this.zoekSleep(flarmId);
 
-        this.logger.log(`StartMethode: ${vliegtuig?.REG_CALL} → ${StartMethode[startMethode]} (maxClimb: ${maxClimb.toFixed(1)} m/s, towPlane: ${hasTowPlane})`);
-        this.eventEmitter.emit(GliderEvents.StartMethodeDetermined, startId, startMethode);
+            if (sleepkistID > 0) {
+                startMethode = StartMethode.Sleep;
+            }
+            else if (vliegtuig?.ZELFSTART) {
+                startMethode = StartMethode.Zelfstart;
+            }
+            else {
+                startMethode = StartMethode.Lier;
+            }
+        }
+
+       this.logger.error(`StartMethode: ${vliegtuig?.REG_CALL} → ${StartMethode[startMethode]} (maxClimb: ${maxClimb.toFixed(1)} m/s, towPlane: ${sleepkistID})`);
+       this.eventEmitter.emit(GliderEvents.StartMethodeDetermined, data.startID, startMethode, sleepkistID);
+    }
+
+    zoekSleep(flarmId: string): number {
+        const flarmSleepData = this.FlarmDataStore.filter(fd => fd.SLEEPKIST === true);
+        const cutoff = DateTime.now().minus({ seconds: 30 });
+
+        const recentMoving = (id: string) =>
+            (this.positionHistory.get(id) ?? []).filter(m => m.receivedTime > cutoff && (m.kalman_speed ?? 0) > 0);
+
+        const avgSpeed = (msgs: FlarmData[]) =>
+            msgs.reduce((s, m) => s + (m.kalman_speed ?? 0), 0) / msgs.length;
+
+        const avgCourse = (msgs: FlarmData[]) => {
+            const sinSum = msgs.reduce((s, m) => s + Math.sin(m.course * Math.PI / 180), 0);
+            const cosSum = msgs.reduce((s, m) => s + Math.cos(m.course * Math.PI / 180), 0);
+            return (Math.atan2(sinSum, cosSum) * 180 / Math.PI + 360) % 360;
+        };
+
+        const gliderHistory = recentMoving(flarmId);
+        if (gliderHistory.length === 0) return -1;
+
+        const gSpeed  = avgSpeed(gliderHistory);
+        const gCourse = avgCourse(gliderHistory);
+        const gLast   = gliderHistory[gliderHistory.length - 1];
+
+        for (const fd of flarmSleepData) {
+            if (!fd.flarmData?.flarmId || fd.flarmData.flarmId === flarmId) continue;   // niet zichzelf vergelijken of als er geen flarmId is
+
+            const sleepHistory = recentMoving(fd.flarmData.flarmId);
+            if (sleepHistory.length === 0) continue;
+
+            if (Math.abs(avgSpeed(sleepHistory) - gSpeed) > 15) continue;
+            if (this.angleDiff(avgCourse(sleepHistory), gCourse) > 25) continue;
+
+            const tLast  = sleepHistory[sleepHistory.length - 1];
+            const gLat   = gLast.kalman_latitude  ?? gLast.latitude;
+            const gLon   = gLast.kalman_longitude ?? gLast.longitude;
+            const tLat   = tLast.kalman_latitude  ?? tLast.latitude;
+            const tLon   = tLast.kalman_longitude ?? tLast.longitude;
+
+            const dist    = this.distanceMeters(gLat, gLon, tLat, tLon);
+            if (dist < 40 || dist > 200) continue;
+
+            // Tug should be ahead of glider: bearing from glider to tug ≈ course
+            if (this.angleDiff(this.bearingDeg(gLat, gLon, tLat, tLon), gCourse) > 45) continue;
+
+            return fd.vliegtuigID;
+        }
+
+        return -1;
+    }
+
+    private distanceMeters(lat1: number, lon1: number, lat2: number, lon2: number): number {
+        const R    = 6371000;
+        const rlat1 = lat1 * Math.PI / 180;
+        const rlat2 = lat2 * Math.PI / 180;
+        const dlat  = (lat2 - lat1) * Math.PI / 180;
+        const dlon  = (lon2 - lon1) * Math.PI / 180;
+        const a     = Math.sin(dlat / 2) ** 2 + Math.cos(rlat1) * Math.cos(rlat2) * Math.sin(dlon / 2) ** 2;
+        return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+    }
+
+    private bearingDeg(lat1: number, lon1: number, lat2: number, lon2: number): number {
+        const rlat1 = lat1 * Math.PI / 180;
+        const rlat2 = lat2 * Math.PI / 180;
+        const dlon  = (lon2 - lon1) * Math.PI / 180;
+        const y     = Math.sin(dlon) * Math.cos(rlat2);
+        const x     = Math.cos(rlat1) * Math.sin(rlat2) - Math.sin(rlat1) * Math.cos(rlat2) * Math.cos(dlon);
+        return (Math.atan2(y, x) * 180 / Math.PI + 360) % 360;
+    }
+
+    private angleDiff(a: number, b: number): number {
+        const d = Math.abs(a - b) % 360;
+        return d > 180 ? 360 - d : d;
     }
 
     checkAanmelden(payload: FlarmDataWithStatus)
