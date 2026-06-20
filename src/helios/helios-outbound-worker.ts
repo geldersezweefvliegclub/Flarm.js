@@ -113,11 +113,10 @@ export class HeliosOutboundWorker implements OnModuleInit {
             const s: HeliosStart = {
                 ID: startID,
                 OPMERKINGEN: opm,
-                STARTMETHODE_ID: startMethode,
             }
 
             this.startsService.updateStart(s).then(() => {
-                this.logger.log(`Startmethode aangepast: ${startID} → ${StartMethode[startMethode]}`);
+                this.logger.log(`Start opmerking toegeogd: ${startID} → ${StartMethode[startMethode]} - ${opm}`);
             }).catch(() => {
                 this.logger.error(`Error updating startmethode: ${startID}`);
             });

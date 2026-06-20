@@ -233,7 +233,7 @@ export class ProcessingService implements  OnModuleInit, OnModuleDestroy  {
                 const sec = diff.length('seconds');
                 const predictedAltitude = Math.round(fdContainer.flarmData.kalman_altitude_agl + (sec * fdContainer.flarmData.kalman_climb));
 
-                this.logger.log(`Predicated altitude:  ${fdContainer.REG_CALL} start ID:${fdContainer.startID}  predicted:${predictedAltitude}`);
+                this.logger.verbose(`Predicted altitude:  ${fdContainer.REG_CALL} start ID:${fdContainer.startID}  predicted:${predictedAltitude}`);
 
                 if (predictedAltitude < LANDINGS_HOOGTE)
                 {
