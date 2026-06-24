@@ -1,4 +1,5 @@
 import {Injectable, Logger, OnModuleDestroy, OnModuleInit} from '@nestjs/common';
+import {Cron, CronExpression} from '@nestjs/schedule';
 import * as net from 'net';
 import {FlarmEvents} from "../shared/FlarmEvents";
 import {EventEmitter2} from "@nestjs/event-emitter";
@@ -29,7 +30,6 @@ export class FlarmOgnService implements  OnModuleInit, OnModuleDestroy
 
     private client: net.Socket;
     private keepAliveIntervalId: NodeJS.Timeout;
-    private removeLostIntervalId: NodeJS.Timeout;
     private unparsedData: string = '';
 
     private flarmOntvangen: DateTime[] = [];
@@ -46,8 +46,6 @@ export class FlarmOgnService implements  OnModuleInit, OnModuleDestroy
         this.veldHoogte = this.configService.get('Vliegveld.hoogte');
         const config =  this.configService.get('OGN');
         this.logger.log('FlarmOgnService initialized');
-
-        this.removeLostIntervalId = setInterval(() => this.removeLost(), 1 * 60 * 1000);
 
         if (config.simulator) {
             this.logger.log('------------- RUNNING IN SIMULATOR MODE -------------');
@@ -73,7 +71,6 @@ export class FlarmOgnService implements  OnModuleInit, OnModuleDestroy
         this.logger.verbose('FlarmOgnService destroyed');
         this.closeConnection();
 
-        clearInterval(this.removeLostIntervalId);
         clearInterval(this.keepAliveIntervalId);
     }
 
@@ -178,6 +175,7 @@ export class FlarmOgnService implements  OnModuleInit, OnModuleDestroy
         });
     }
 
+    @Cron(CronExpression.EVERY_MINUTE)
     removeLost() {
         const now = DateTime.now();
         for (var key in this.flarmOntvangen) {
