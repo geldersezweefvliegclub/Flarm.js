@@ -269,7 +269,6 @@ export class ProcessingService implements  OnModuleInit, OnModuleDestroy  {
 
     private addToHistory(data: FlarmData): void {
         const flarmId = data.flarmId;
-        const vliegtuig = this.heliosInboundService.getVliegtuigByFlarmcode(flarmId);
 
         if (!this.positionHistory.has(flarmId)) {
             this.positionHistory.set(flarmId, []);
@@ -335,7 +334,10 @@ export class ProcessingService implements  OnModuleInit, OnModuleDestroy  {
         };
 
         const gliderHistory = recentMoving(flarmId);
-        if (gliderHistory.length === 0) return -1;
+        if (gliderHistory.length === 0) {
+            this.logger.debug(`No recent moving history for glider ${flarmId}, cannot determine tow plane.`);
+            return -1;
+        }
 
         const gSpeed  = avgSpeed(gliderHistory);
         const gCourse = avgCourse(gliderHistory);
@@ -345,10 +347,20 @@ export class ProcessingService implements  OnModuleInit, OnModuleDestroy  {
             if (!fd.flarmData?.flarmId || fd.flarmData.flarmId === flarmId) continue;   // niet zichzelf vergelijken of als er geen flarmId is
 
             const sleepHistory = recentMoving(fd.flarmData.flarmId);
-            if (sleepHistory.length === 0) continue;
+            if (sleepHistory.length === 0) {
+                this.logger.debug(`No recent moving history for tow plane ${fd.flarmData.flarmId}, skipping.`);
+                continue;
+            }
 
-            if (Math.abs(avgSpeed(sleepHistory) - gSpeed) > 15) continue;
-            if (this.angleDiff(avgCourse(sleepHistory), gCourse) > 25) continue;
+            this.logger.debug(`Comparing glider ${flarmId} (speed: ${gSpeed.toFixed(1)} m/s, course: ${gCourse.toFixed(1)}°) with tow plane ${fd.flarmData.flarmId} (speed: ${avgSpeed(sleepHistory).toFixed(1)} m/s, course: ${avgCourse(sleepHistory).toFixed(1)}°)`);
+            if (Math.abs(avgSpeed(sleepHistory) - gSpeed) > 15) {
+                this.logger.debug(`Speed difference too large for tug ${fd.REG_CALL} (ID: ${fd.vliegtuigID})`);
+                continue;
+            }
+            if (this.angleDiff(avgCourse(sleepHistory), gCourse) > 25) {
+                this.logger.debug(`Course difference too large for tug ${fd.REG_CALL} (ID: ${fd.vliegtuigID})`);
+                continue;
+            }
 
             const tLast  = sleepHistory[sleepHistory.length - 1];
             const gLat   = gLast.kalman_latitude  ?? gLast.latitude;
@@ -357,10 +369,11 @@ export class ProcessingService implements  OnModuleInit, OnModuleDestroy  {
             const tLon   = tLast.kalman_longitude ?? tLast.longitude;
 
             const dist    = this.distanceMeters(gLat, gLon, tLat, tLon);
-            if (dist < 40 || dist > 200) continue;
-
-            // Tug should be ahead of glider: bearing from glider to tug ≈ course
-            if (this.angleDiff(this.bearingDeg(gLat, gLon, tLat, tLon), gCourse) > 45) continue;
+            this.logger.debug(`Checking tug ${fd.REG_CALL} (ID: ${fd.vliegtuigID}) for glider ${gLast.flarmId}: distance = ${dist.toFixed(1)} m`);
+            if (dist < 40 || dist > 200) {
+                this.logger.debug(`Distance to tug ${fd.REG_CALL} (ID: ${fd.vliegtuigID}) is ${dist.toFixed(1)} m, which is outside the acceptable range (40-200 m)`);
+                continue;
+            }
 
             return fd.vliegtuigID;
         }
@@ -376,15 +389,6 @@ export class ProcessingService implements  OnModuleInit, OnModuleDestroy  {
         const dlon  = (lon2 - lon1) * Math.PI / 180;
         const a     = Math.sin(dlat / 2) ** 2 + Math.cos(rlat1) * Math.cos(rlat2) * Math.sin(dlon / 2) ** 2;
         return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-    }
-
-    private bearingDeg(lat1: number, lon1: number, lat2: number, lon2: number): number {
-        const rlat1 = lat1 * Math.PI / 180;
-        const rlat2 = lat2 * Math.PI / 180;
-        const dlon  = (lon2 - lon1) * Math.PI / 180;
-        const y     = Math.sin(dlon) * Math.cos(rlat2);
-        const x     = Math.cos(rlat1) * Math.sin(rlat2) - Math.sin(rlat1) * Math.cos(rlat2) * Math.cos(dlon);
-        return (Math.atan2(y, x) * 180 / Math.PI + 360) % 360;
     }
 
     private angleDiff(a: number, b: number): number {
