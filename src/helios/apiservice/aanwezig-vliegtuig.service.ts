@@ -38,7 +38,7 @@ export class AanwezigVliegtuigService {
             this.storageService.opslaan('types', this.aangemeldCache);
         } catch (e) {
             if ((e.responseCode !== 304) && (e.responseCode !== 704)) { // server bevat dezelfde starts als cache
-                this.logger.error(`Exception in types.service.getTypes: ${e}`);
+                this.logger.error(`Exception in types.service.getTypes: ${JSON.stringify(e)}`);
             }
         }
         return this.aangemeldCache?.dataset as HeliosType[];
@@ -68,7 +68,7 @@ export class AanwezigVliegtuigService {
             return response.json();
         }
         catch (e) {
-            this.logger.error(`Exception in aanwezig-vliegtuig.service.aanmelden: ${e}`);
+            this.logger.error(`Exception in aanwezig-vliegtuig.service.aanmelden: ${JSON.stringify(e)}`);
         }
     }
 }

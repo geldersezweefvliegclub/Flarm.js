@@ -65,6 +65,9 @@ export class HeliosInboundWorker implements OnModuleInit {
         if (updatedStart === undefined)
             return;
 
+        if (this.vliegveld === undefined)
+            return;
+
         if (updatedStart.VELD_ID !== this.vliegveld.ID)
             return;
 

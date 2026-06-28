@@ -44,7 +44,7 @@ export class VliegtuigenService {
             this.storageService.opslaan('vliegtuigen', this.vliegtuigenCache);
         } catch (e) {
             if ((e.responseCode !== 304) && (e.responseCode !== 704)) { // server bevat dezelfde starts als cache
-                this.logger.error(`Exceptionin vliegtuigen.service.getVliegtuigen: ${e}`);
+                this.logger.error(`Exceptionin vliegtuigen.service.getVliegtuigen: ${JSON.stringify(e)}`);
             }
         }
         return this.vliegtuigenCache?.dataset as HeliosVliegtuigenDataset[];

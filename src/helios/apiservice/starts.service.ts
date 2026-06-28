@@ -44,7 +44,7 @@ export class StartsService {
             this.storageService.opslaan('starts', this.startsCache);
         } catch (e) {
             if ((e.responseCode !== 304) && (e.responseCode !== 704)) { // server bevat dezelfde starts als cache
-                this.logger.error(`Exception in starts.service.getStarts: ${e}`);
+                this.logger.error(`Exception in starts.service.getStarts: ${JSON.stringify(e)}`);
             }
         }
         return this.startsCache?.dataset as HeliosStartDataset[];
@@ -67,7 +67,7 @@ export class StartsService {
             return response.json();
         }
         catch (e) {
-            this.logger.error(`Exception in starts.service.updateStart: ${e}`);
+            this.logger.error(`Exception in starts.service.updateStart: ${JSON.stringify(e)}`);
         }
     }
 }
