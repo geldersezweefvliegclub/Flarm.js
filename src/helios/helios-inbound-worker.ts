@@ -62,7 +62,7 @@ export class HeliosInboundWorker implements OnModuleInit {
     onStartlijstUpdated(_event: HeliosMqttEvent): void {
         const updatedStart = _event.resultaat as unknown as HeliosStartDataset;
 
-        if (updatedStart === undefined)
+        if (updatedStart === undefined || updatedStart === null)
             return;
 
         if (this.vliegveld === undefined)
