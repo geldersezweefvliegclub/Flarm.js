@@ -34,6 +34,7 @@ export class FlarmOgnService implements  OnModuleInit, OnModuleDestroy
 
     private flarmOntvangen: DateTime[] = [];
     private kalmanContainer: { [key: string]: KalmanFilter3D } = {};
+    private lastTimestampSec: { [key: string]: number } = {};
 
     private veldHoogte: number = 0;
 
@@ -156,6 +157,21 @@ export class FlarmOgnService implements  OnModuleInit, OnModuleDestroy
                     {
                         this.recorder.record(line);
 
+                        // OGN vaak via meerdere ontvangers gerelayed: dezelfde (of oudere) meting kan
+                        // vertraagd nogmaals binnenkomen. Dat verstoort de Kalman-filter (zie dt≈0 met
+                        // grote hoogtesprong), dus alles wat niet strikt nieuwer is dan het laatst
+                        // verwerkte bericht van dit toestel wordt genegeerd.
+                        const timestampSec = this.parseTimestampSeconds(msg.timestamp);
+                        const lastSec = this.lastTimestampSec[msg.flarmId];
+                        if (lastSec != null) {
+                            const diff = timestampSec - lastSec;
+                            const isDuplicateOrStale = diff <= 0 && diff > -43200; // negatief, tenzij middernacht-overgang
+                            if (isDuplicateOrStale) {
+                                return;
+                            }
+                        }
+                        this.lastTimestampSec[msg.flarmId] = timestampSec;
+
                         if (this.flarmOntvangen[msg.flarmId] == null)
                             this.kalmanContainer[msg.flarmId] = new KalmanFilter3D(this.veldHoogte);
 
@@ -184,10 +200,18 @@ export class FlarmOgnService implements  OnModuleInit, OnModuleDestroy
             {
                 delete this.flarmOntvangen[key];
                 delete this.kalmanContainer[key];
+                delete this.lastTimestampSec[key];
 
                 this.eventEmitter.emit(FlarmEvents.LostFlarm, key);
             }
         }
+    }
+
+    private parseTimestampSeconds(timestamp: string): number {
+        const h = parseInt(timestamp.substring(0, 2), 10);
+        const m = parseInt(timestamp.substring(2, 4), 10);
+        const s = parseInt(timestamp.substring(4, 6), 10);
+        return h * 3600 + m * 60 + s;
     }
 
     async runSimulator(filename: string) {
