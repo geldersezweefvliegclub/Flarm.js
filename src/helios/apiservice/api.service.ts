@@ -50,7 +50,7 @@ export class APIService {
         });
 
         if (!response.ok) {
-            this.handleError(response);
+            this.handleError(response, heliosUrl);
         }
         return response;
     }
@@ -62,7 +62,8 @@ export class APIService {
         if (!apiHeaders?.has('Authorization') && this.BearerToken) {
             apiHeaders.append('Authorization', "Bearer " + this.BearerToken);
         }
-        const response = await fetch(`${this.URL}${url}`, {
+        const heliosUrl = `${this.URL}${url}`;
+        const response = await fetch(heliosUrl, {
             method: 'POST',
             headers: apiHeaders,
             body: body,
@@ -70,7 +71,7 @@ export class APIService {
         });
         //todo response heeft een .ok property. Mogelijk beter te gebruiken? (Zoals get())
         if (response.status != 200) {  // 200 is normaal voor post
-            this.handleError(response);
+            this.handleError(response, heliosUrl, body);
         }
 
         return response;
@@ -83,7 +84,8 @@ export class APIService {
         if (!apiHeaders?.has('Authorization') && this.BearerToken) {
             apiHeaders.append('Authorization', "Bearer " + this.BearerToken);
         }
-        const response = await fetch(`${this.URL}${url}`, {
+        const heliosUrl = `${this.URL}${url}`;
+        const response = await fetch(heliosUrl, {
             method: 'PUT',
             headers: apiHeaders,
             body: body,
@@ -91,7 +93,7 @@ export class APIService {
         });
         // todo .ok property gebruiken?
         if (response.status != 200) {  // 200 is normaal voor put
-            this.handleError(response);
+            this.handleError(response, heliosUrl, body);
         }
         return response;
     }
@@ -107,14 +109,15 @@ export class APIService {
             apiHeaders.append('Authorization', "Bearer " + this.BearerToken);
         }
 
-        const response = await fetch(`${this.URL}${url}`, {
+        const heliosUrl = `${this.URL}${url}`;
+        const response = await fetch(heliosUrl, {
             method: 'DELETE',
             headers: apiHeaders,
             credentials: 'include'
         });
         // todo .ok gebruiken?
         if (response.status != 204) { // 204 is normaal voor delete
-            this.handleError(response);
+            this.handleError(response, heliosUrl);
         }
     }
 
@@ -129,7 +132,8 @@ export class APIService {
             apiHeaders.append('Authorization', "Bearer " + this.BearerToken);
         }
 
-        const response = await fetch(`${this.URL}${url}`, {
+        const heliosUrl = `${this.URL}${url}`;
+        const response = await fetch(heliosUrl, {
             method: 'PATCH',
             headers: apiHeaders,
             credentials: 'include'
@@ -137,7 +141,7 @@ export class APIService {
 
         // todo .ok gebruiken?
         if (response.status != 202) { // 204 is normaal voor patch
-            this.handleError(response);
+            this.handleError(response, heliosUrl);
         }
     }
 
@@ -160,15 +164,17 @@ export class APIService {
 
 
     // Vul customer error  met http status code en de beschrijving uit X-Error-Message
-    private handleError(response: Response): void {
+    private handleError(response: Response, url: string, body?: string|FormData): void {
         let beschrijving = response.headers.get('X-Error-Message')      // Helios implementaie fout melding
 
         const error: any = {
             responseCode: response.status,
-            beschrijving: beschrijving
+            beschrijving: beschrijving,
+            url: url,
+            body: body
         }
 
-        const errorMsg = `API call failed with status ${response.status} ${response.statusText} ${beschrijving}`;
+        const errorMsg = `API call failed with status ${response.status} ${response.statusText} ${beschrijving} - URL: ${url}${body ? ` - Body: ${body}` : ''}`;
         if (response.status !== 304) {
             this.logger.error(errorMsg);
         }
