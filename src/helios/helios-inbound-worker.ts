@@ -48,27 +48,30 @@ export class HeliosInboundWorker implements OnModuleInit {
         }, 10 * 1000);
     }
 
+    // Iedere 10 minuten het bearer token vernieuwen, zodat we niet uitgelogd worden door Helios.
     @Cron('0 */10 * * * *')
     keepHeliosAlive(): void {
         this.loginservice.relogin();
     }
 
+    // Ophalen van de lijst van vliegtuigen die op dit moment aanwezig zijn op het vliegveld
     @Cron('0 */5 9-21 * * *')
     loadAanwezig(): void {
         this.aanwezigVliegtuigService.getAanwezig();
     }
 
+    // Er is een start aangepast / ingevoerd, via MQTT krijgen we dit in real-time door. Update de interne cache
     @OnEvent(MQTT_STARTLIJST)
     onStartlijstUpdated(_event: HeliosMqttEvent): void {
         const updatedStart = _event.resultaat as unknown as HeliosStartDataset;
 
-        if (updatedStart === undefined || updatedStart === null)
+        if (updatedStart === undefined || updatedStart === null)    // bevat geen data
             return;
 
-        if (this.vliegveld === undefined)
+        if (this.vliegveld === undefined)  // Flarm werkt per vliegveld, configuratie is nog niet geladen
             return;
 
-        if (updatedStart.VELD_ID !== this.vliegveld.ID)
+        if (updatedStart.VELD_ID !== this.vliegveld.ID)  // De start is op een ander vliegveld
             return;
 
         if (updatedStart.DATUM !== DateTime.now().toISODate())
@@ -77,14 +80,17 @@ export class HeliosInboundWorker implements OnModuleInit {
         const idx = this.startsStore.findIndex((s) => s.ID === _event.recordId);
 
         if (idx >= 0) {
-            this.startsStore[idx] = updatedStart;
+            this.startsStore[idx] = updatedStart;       // start bestaat al, update
         } else {
-            this.startsStore.push(updatedStart);
+            this.startsStore.push(updatedStart);        // start bestaat nog niet, toevoegen
         }
 
+        // Laat weten dat de starts zijn bijgewerkt, zodat andere services (zoals Flarm) hun interne cache kunnen bijwerken
         this.eventEmitter.emit(HeliosEvents.StartsGeladen);
     }
 
+    // Iedere 5 minuten halen we de starts op, fallback als we een MQTT event gemist hebben.
+    // We halen alleen starts op van vandaag, en alleen starts die nog niet geland zijn.
     @Cron('0 */5 9-21 * * *')
     loadStarts(): void {
         this.logger.verbose('StartsService: loadStarts');
@@ -108,6 +114,8 @@ export class HeliosInboundWorker implements OnModuleInit {
         });
     }
 
+    // 1x per uut ophalen van alle vliegtuigen die we in helios kennen,
+    // alleen vliegtuigen met een flarmcode zijn interessant, want alleen die kunnen we volgen via Flarm.
     @Cron('0 0 9-21 * * *')
     loadVliegtuigen() {
         this.logger.verbose('VliegtuigenService: loadVliegtuigen');
@@ -124,6 +132,8 @@ export class HeliosInboundWorker implements OnModuleInit {
         });
     }
 
+    // 1x per uur halen we het vliegveld op, zodat we weten welk vliegveld we volgen.
+    // Dit is nodig voor het ophalen van starts en daginfo.
     @Cron('0 0 9-21 * * *')
     loadVliegveld() {
         const vliegveldCode = this.configService.get('Vliegveld.code');
@@ -135,18 +145,23 @@ export class HeliosInboundWorker implements OnModuleInit {
         });
     }
 
+
+    // interne functie om vliegeveld op te halen
     public getVliegveld(): HeliosType {
         return this.vliegveld;
     }
 
+    // zoek een vliegtuig op basis van de flarmcode, ongeacht hoofdletters of kleine letters
     public getVliegtuigByFlarmcode(flarmcode: string): HeliosVliegtuigenDataset {
         return this.vliegtuigenStore.find((vliegtuig) => vliegtuig.FLARMCODE.toLowerCase().includes(flarmcode.toLowerCase()));
     }
 
+    // welke sleepvliegtuigen kennen we
     public getSleepkisten(): HeliosVliegtuigenDataset[] {
         return this.vliegtuigenStore.filter(vliegtuig => vliegtuig.SLEEPKIST === true);
     }
 
+    // de meest recent start op van een gegeven vliegtuig
     public getStart(vliegtuigID: number): HeliosStartDataset {
         const starts : HeliosStartDataset[] = this.startsStore.filter((start) => start.VLIEGTUIG_ID === vliegtuigID).sort(
             (a, b) =>
@@ -163,12 +178,28 @@ export class HeliosInboundWorker implements OnModuleInit {
         return (starts.length > 0) ? starts[0] : null;
     }
 
+    // start op basis van database ID
     public getStartByID(startID: number): HeliosStartDataset {
         return this.startsStore.find((start) => start.ID === startID);
     }
 
+    // Zoek de start van het zweefvliegtuig dat op dit moment gesleept wordt door een sleepvliegtuig.
+    // Wordt gebruikt als het sleepvliegtuig geland is: we willen dan weten voor welke start (welk zweefvliegtuig)
+    // we de bereikte sleephoogte (SLEEP_HOOGTE) moeten opslaan.
+    //
+    // SLEEPKIST_ID staat op de start van het zweefvliegtuig en verwijst naar het vliegtuig-ID van de sleepkist
+    // (dit veld wordt normaal door de toren ingevuld bij het inplannen van de start, en indien nodig
+    // automatisch gecorrigeerd zodra Flarm het sleepvliegtuig heeft herkend, zie helios-outbound-worker.ts).
+    //
+    // Een start komt alleen in aanmerking als:
+    //  - SLEEPKIST_ID overeenkomt met het sleepvliegtuig dat nu landt
+    //  - STARTTIJD gevuld is (het zweefvliegtuig is echt gestart)
+    //  - LANDINGSTIJD nog leeg is (het zweefvliegtuig is nog in de lucht; het sleepvliegtuig landt immers
+    //    eerder dan het zweefvliegtuig dat het net gesleept is
+    //
+    // Zijn er (bij een dataprobleem) toch meerdere kandidaten, dan kiezen we de laatst gestarte
+    // (laatste STARTTIJD, bij gelijke tijd het hoogste start-ID).
     public getStartBySleepkistID(sleepkistVliegtuigID: number): HeliosStartDataset {
-        // alleen kandidaten die al gestart zijn en nog niet geland (het sleepvliegtuig landt eerder dan het zweefvliegtuig)
         const starts : HeliosStartDataset[] = this.startsStore.filter((start) =>
             start.SLEEPKIST_ID === sleepkistVliegtuigID && !!start.STARTTIJD &&  !start.LANDINGSTIJD
         ).sort(
@@ -180,10 +211,11 @@ export class HeliosInboundWorker implements OnModuleInit {
                 return b.ID - a.ID;
             });
 
-        // bij meerdere kandidaten: de laatst gestarte
         return (starts.length > 0) ? starts[0] : null;
     }
 
+    // ophalen van de banengeometrie van het vliegveld,
+    // zodat we kunnen bepalen of een vliegtuig binnen of buiten het vliegveld vliegt.
     @Cron('0 */10 * * * *')
     loadGeoFence() {
         if (this.configService.get('Vliegveld.Banen') === undefined)
@@ -227,6 +259,7 @@ export class HeliosInboundWorker implements OnModuleInit {
         });
     }
 
+    // is de flarm positie van het vliegtuig binnen de banengeometrie van het vliegveld? (true = binnen, false = buiten)
     isInsidePolygon(point) {
         // ray-casting algorithm based on
         // https://wrf.ecse.rpi.edu/Research/Short_Notes/pnpoly.html
@@ -249,6 +282,7 @@ export class HeliosInboundWorker implements OnModuleInit {
         return inside;
     };
 
+    // is het vliegtuig reeds aangemeld?
     isAangemeld(vliegtuigID: number): boolean {
         return this.aanwezigVliegtuigService.isAangemeld(vliegtuigID);
     }

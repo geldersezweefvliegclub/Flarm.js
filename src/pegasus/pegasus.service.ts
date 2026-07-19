@@ -1,4 +1,4 @@
-import {Injectable, Logger, OnModuleInit} from '@nestjs/common';
+import {Injectable, OnModuleInit} from '@nestjs/common';
 import {EventEmitter2, OnEvent} from "@nestjs/event-emitter";
 import {FlarmDataWithStatus} from "../processing/processing";
 import {WebSocketEvents} from "../shared/WebSocketEvents";
@@ -120,8 +120,7 @@ export class PegasusService implements  OnModuleInit{
       this.eventEmitter.emit(WebSocketEvents.SendFlarmMessage,  msg);
     }
 
-    // Start informatie versturen naar de websocket
-
+    // Start informatie versturen naar de websocket (dus naar frontend). Dit wordt gedaan als er een start is geregistreerd
     @OnEvent(HeliosEvents.OnStartRecorded)
     handleStartRecordedEvent(startID: number) {
         setTimeout(() => {
@@ -130,6 +129,7 @@ export class PegasusService implements  OnModuleInit{
         }, 1000);
     }
 
+    // Start informatie versturen naar de websocket (dus naar frontend). Dit wordt gedaan als er een landing is geregistreerd
     @OnEvent(HeliosEvents.OnLandedRecorded)
     handleLandingRecordedEvent(startID: number) {
         setTimeout(() => {
@@ -141,6 +141,8 @@ export class PegasusService implements  OnModuleInit{
         }, 1000);
     }
 
+
+    // opbouwen van het bericht voor het websocket en een event afgeven dat het bericht verstuurd kan worden
     publishStart(payload: HeliosStartDataset) {
         const  msg = {
             START_ID: payload.ID,
