@@ -167,6 +167,23 @@ export class HeliosInboundWorker implements OnModuleInit {
         return this.startsStore.find((start) => start.ID === startID);
     }
 
+    public getStartBySleepkistID(sleepkistVliegtuigID: number): HeliosStartDataset {
+        // alleen kandidaten die al gestart zijn en nog niet geland (het sleepvliegtuig landt eerder dan het zweefvliegtuig)
+        const starts : HeliosStartDataset[] = this.startsStore.filter((start) =>
+            start.SLEEPKIST_ID === sleepkistVliegtuigID && !!start.STARTTIJD &&  !start.LANDINGSTIJD
+        ).sort(
+            (a, b) =>
+            {
+                if (a.STARTTIJD !== b.STARTTIJD) {
+                    return b.STARTTIJD.localeCompare(a.STARTTIJD);
+                }
+                return b.ID - a.ID;
+            });
+
+        // bij meerdere kandidaten: de laatst gestarte
+        return (starts.length > 0) ? starts[0] : null;
+    }
+
     @Cron('0 */10 * * * *')
     loadGeoFence() {
         if (this.configService.get('Vliegveld.Banen') === undefined)

@@ -106,19 +106,30 @@ export class HeliosOutboundWorker implements OnModuleInit {
     handleStartMethodeDeterminedEvent(startID: number, startMethode: StartMethode, SleepkistID: number)
     {
         this.startsService.getStart(startID).then((start: HeliosStart) => {
-            if (start.STARTMETHODE_ID == startMethode)
-                return;
+            const s: HeliosStart = { ID: startID };
+            let changed = false;
 
-            const opm = `Controleer startmethode, ${StartMethode[startMethode]} gedetecteerd` + (start.OPMERKINGEN ? ` : ${start.OPMERKINGEN}` : '')
-            const s: HeliosStart = {
-                ID: startID,
-                OPMERKINGEN: opm,
+            // sleepvliegtuig niet (goed) ingevuld -> corrigeren zodra bekend
+            if (startMethode === StartMethode.Sleep && SleepkistID > 0 && start.SLEEPKIST_ID !== SleepkistID)
+            {
+                s.SLEEPKIST_ID = SleepkistID;
+                changed = true;
+                this.logger.log(`Sleepkist gecorrigeerd: start ${startID} → vliegtuig ${SleepkistID} (was ${start.SLEEPKIST_ID})`);
             }
 
+            if (start.STARTMETHODE_ID !== startMethode)
+            {
+                s.OPMERKINGEN = `Controleer startmethode, ${StartMethode[startMethode]} gedetecteerd` + (start.OPMERKINGEN ? ` : ${start.OPMERKINGEN}` : '');
+                changed = true;
+            }
+
+            if (!changed)
+                return;
+
             this.startsService.updateStart(s).then(() => {
-                this.logger.log(`Start opmerking toegevoegd: ${startID} → ${StartMethode[startMethode]} - ${opm}`);
+                this.logger.log(`Start bijgewerkt: ${startID}`);
             }).catch(() => {
-                this.logger.error(`Error updating startmethode: ${startID}`);
+                this.logger.error(`Error updating startmethode/sleepkist: ${startID}`);
             });
         });
     }

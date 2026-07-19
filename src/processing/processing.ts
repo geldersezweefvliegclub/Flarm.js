@@ -189,7 +189,18 @@ export class ProcessingService implements  OnModuleInit, OnModuleDestroy  {
                             // als het sleepvliegtuig geland is, dan hoogte invullen voor gesleept vliegtuig
                             if (vliegtuig.SLEEPKIST)
                             {
-                                this.eventEmitter.emit(GliderEvents.SleepHoogte, fdContainer.maxHoogte);
+                                const gliderStart = this.heliosInboundService.getStartBySleepkistID(vliegtuig.ID);
+
+                                if (gliderStart)
+                                {
+                                    this.logger.log(`------- SLEEPHOOGTE: ${vliegtuig.REG_CALL} → start ${gliderStart.ID} hoogte ${fdContainer.maxHoogte}`);
+                                    this.eventEmitter.emit(GliderEvents.SleepHoogte, gliderStart.ID, fdContainer.maxHoogte);
+                                }
+                                else
+                                {
+                                    this.logger.warn(`Geen gekoppelde glider-start gevonden voor sleepvliegtuig ${vliegtuig.REG_CALL} (ID ${vliegtuig.ID})`);
+                                }
+
                                 fdContainer.maxHoogte = undefined;
                             }
                         }
