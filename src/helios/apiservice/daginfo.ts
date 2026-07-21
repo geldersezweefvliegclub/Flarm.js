@@ -47,7 +47,7 @@ export class DaginfoService {
             this.storageService.opslaan('daginfo', this.dagInfoCache);
         } catch (e) {
             if ((e.responseCode !== 304) && (e.responseCode !== 704)) { // server bevat dezelfde starts als cache
-                this.logger.error(`Exception in starts.service.getStarts: ${JSON.stringify(e)}`);
+                this.logger.warn(`Exception in daginfo.service.getDagInfo: ${JSON.stringify(e)}`);
             }
         }
         const ds = this.dagInfoCache?.dataset as HeliosDagInfosDataset[];
