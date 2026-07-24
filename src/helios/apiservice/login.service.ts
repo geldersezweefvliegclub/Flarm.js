@@ -2,7 +2,9 @@
 import {Base64} from 'js-base64';
 import {APIService} from   "./api.service";
 import {ConfigService} from "@nestjs/config";
-import {Injectable} from "@nestjs/common";
+import {Injectable, Logger} from "@nestjs/common";
+import {OnEvent} from "@nestjs/event-emitter";
+import {HeliosEvents} from "../../shared/HeliosEvents";
 
 interface BearerToken {
     TOKEN: string;
@@ -10,7 +12,9 @@ interface BearerToken {
 
 @Injectable()
 export class LoginService  {
+    private readonly logger = new Logger(LoginService.name);
     isLoggedIn: boolean = false;
+    private reloginInProgress = false;   // voorkomt dat meerdere gelijktijdig falende aanroepen elk apart opnieuw inloggen
 
     constructor(private readonly configService: ConfigService,
                 private readonly apiService: APIService) { }
@@ -63,5 +67,30 @@ export class LoginService  {
 
     isIngelogd(): boolean {
         return this.isLoggedIn;
+    }
+
+    // De Helios-sessie is verbroken (zie APIService.handleError, HTTP 501 op een niet-login-aanroep).
+    // Eén nieuwe, volledige login (niet relogin, want de sessie is niet zomaar te verversen) is
+    // voldoende om alle volgende API-aanroepen weer te laten werken. Loopt er al een login-poging
+    // (bv. omdat meerdere aanroepen rond hetzelfde moment faalden), dan negeren we het dubbele event.
+    @OnEvent(HeliosEvents.SessionExpired)
+    async handleSessionExpired(): Promise<void> {
+        if (this.reloginInProgress)
+            return;
+
+        this.reloginInProgress = true;
+        this.isLoggedIn = false;
+        this.apiService.setBearerToken();   // dode token direct laten vallen, geen requests meer met een ongeldig token
+
+        this.logger.warn('Helios-sessie verbroken (501), opnieuw inloggen...');
+        try {
+            await this.login();
+        }
+        catch (e) {
+            this.logger.error(`Opnieuw inloggen bij Helios mislukt: ${e?.message ?? e}`);
+        }
+        finally {
+            this.reloginInProgress = false;
+        }
     }
 }

@@ -2,6 +2,8 @@
 import {KeyValueArray} from "../../common/utils";
 import {ConfigService} from "@nestjs/config";
 import {Injectable, Logger} from "@nestjs/common";
+import {EventEmitter2} from "@nestjs/event-emitter";
+import {HeliosEvents} from "../../shared/HeliosEvents";
 
 @Injectable()
 export class APIService {
@@ -9,7 +11,8 @@ export class APIService {
     private readonly URL:string = 'http://localhost:4200/api/'
     private BearerToken: string | null = null;
 
-    constructor(private readonly configService: ConfigService) {
+    constructor(private readonly configService: ConfigService,
+                private readonly eventEmitter: EventEmitter2) {
 
         const url = configService.get('Helios.url');
         if (url) this.URL = url;
@@ -178,6 +181,16 @@ export class APIService {
         if (response.status !== 304) {
             this.logger.error(errorMsg);
         }
+
+        // Helios geeft 501 terug als de sessie/token niet meer geldig is; elke volgende aanroep zou
+        // dan ook blijven falen. We negeren dit voor de login-endpoints zelf (anders zou een falende
+        // Login/Login of Login/Relogin-aanroep, tijdens een Helios-storing, zichzelf blijven
+        // triggeren) en laten voor alle andere aanroepen LoginService weten dat er opnieuw
+        // ingelogd moet worden.
+        if (response.status === 501 && !url.toLowerCase().includes('login')) {
+            this.eventEmitter.emit(HeliosEvents.SessionExpired);
+        }
+
         throw error;
     }
 }
