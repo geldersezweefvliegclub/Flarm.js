@@ -42,9 +42,22 @@ const createLogger = () => WinstonModule.createLogger({
   ],
 });
 
+const logger = createLogger();
+
+// Vangnet: zonder dit stopt Node.js het hele proces bij een onverwachte fout (bv. een Helios-
+// aanroep die faalt zonder dat er ergens een .catch op zit). Dit voorkomt dat de hele applicatie
+// (Flarm-verwerking, websockets, ...) onderuitgaat door één enkele, geïsoleerde fout.
+process.on('unhandledRejection', (reason) => {
+  logger.error('Unhandled promise rejection', reason instanceof Error ? reason.stack : String(reason));
+});
+
+process.on('uncaughtException', (err) => {
+  logger.error('Uncaught exception', err.stack);
+});
+
 async function bootstrap() {
   const app = await NestFactory.create(AppModule, {
-    logger: createLogger()
+    logger
   });
   await app.listen(3000);
 }
