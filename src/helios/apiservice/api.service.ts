@@ -7,6 +7,10 @@ import {HeliosEvents} from "../../shared/HeliosEvents";
 
 @Injectable()
 export class APIService {
+    // query-parameter namen die nooit in plaintext gelogd mogen worden (bv. het Helios-sessietoken
+    // dat Login/Login als query-parameter meekrijgt, zie login.service.ts)
+    private static readonly SENSITIVE_PARAM_NAMES = ['token', 'password', 'wachtwoord', 'secret', 'apikey', 'api_key'];
+
     private readonly logger = new Logger(APIService.name);
     private readonly URL:string = 'http://localhost:4200/api/'
     private BearerToken: string | null = null;
@@ -44,7 +48,7 @@ export class APIService {
         }
 
         const heliosUrl  = this.URL + url;
-        this.logger.verbose(`GET ${heliosUrl}`);
+        this.logger.verbose(`GET ${this.redactSensitiveParams(heliosUrl)}`);
 
         const response = await fetch(heliosUrl, {
             method: 'GET',
@@ -148,6 +152,22 @@ export class APIService {
         }
     }
 
+    // Zorgt dat gevoelige query-parameters (token, wachtwoord, ...) niet in plaintext in de logs
+    // terechtkomen (bv. via een externe Seq-log-server). Overige parameters (ID's, datums, ...)
+    // blijven zichtbaar, want die zijn vaak nuttig bij het debuggen van een falende aanroep.
+    private redactSensitiveParams(url: string): string {
+        const [path, query] = url.split('?');
+        if (!query) return url;
+
+        const redactedQuery = query.split('&').map((pair) => {
+            const [key] = pair.split('=');
+            const isSensitive = APIService.SENSITIVE_PARAM_NAMES.includes(key.toLowerCase());
+            return isSensitive ? `${key}=***` : pair;
+        }).join('&');
+
+        return `${path}?${redactedQuery}`;
+    }
+
     private prepareEndpoint(url: string, params: KeyValueArray): string {
         let args: string = "";
 
@@ -169,15 +189,16 @@ export class APIService {
     // Vul customer error  met http status code en de beschrijving uit X-Error-Message
     private handleError(response: Response, url: string, body?: string|FormData): void {
         let beschrijving = response.headers.get('X-Error-Message')      // Helios implementaie fout melding
+        const redactedUrl = this.redactSensitiveParams(url);
 
         const error: any = {
             responseCode: response.status,
             beschrijving: beschrijving,
-            url: url,
+            url: redactedUrl,
             body: body
         }
 
-        const errorMsg = `API call failed with status ${response.status} ${response.statusText} ${beschrijving} - URL: ${url}${body ? ` - Body: ${body}` : ''}`;
+        const errorMsg = `API call failed with status ${response.status} ${response.statusText} ${beschrijving} - URL: ${redactedUrl}${body ? ` - Body: ${body}` : ''}`;
         if (response.status !== 304) {
             this.logger.error(errorMsg);
         }
