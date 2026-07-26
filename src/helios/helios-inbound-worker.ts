@@ -111,6 +111,8 @@ export class HeliosInboundWorker implements OnModuleInit {
             });
             this.startsStore = startlijst;
             this.eventEmitter.emit(HeliosEvents.StartsGeladen);
+        }).catch((e) => {
+            this.logger.error(`Error ophalen starts: ${e?.message ?? e}`);
         });
     }
 
@@ -129,6 +131,8 @@ export class HeliosInboundWorker implements OnModuleInit {
                         this.vliegtuigenStore.push(vliegtuig);
                 });
             }
+        }).catch((e) => {
+            this.logger.error(`Error ophalen vliegtuigen: ${e?.message ?? e}`);
         });
     }
 
@@ -142,6 +146,8 @@ export class HeliosInboundWorker implements OnModuleInit {
         this.typesService.getTypes({['GROEP']: 9 }).then((t) => {
             this.vliegveld = t.find((type) => type.CODE.toLowerCase() === vliegveldCode.toLowerCase());
             this.loadGeoFence();
+        }).catch((e) => {
+            this.logger.error(`Error ophalen vliegveld: ${e?.message ?? e}`);
         });
     }
 
@@ -256,6 +262,8 @@ export class HeliosInboundWorker implements OnModuleInit {
                     this.logger.error(`Error parsing GeoJSON file ${fileGeoJSON}`);
                 }
             }
+        }).catch((e) => {
+            this.logger.error(`Error ophalen daginfo: ${e?.message ?? e}`);
         });
     }
 

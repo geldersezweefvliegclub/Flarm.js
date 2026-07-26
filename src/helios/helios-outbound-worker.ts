@@ -50,7 +50,9 @@ export class HeliosOutboundWorker implements OnModuleInit {
                     this.logger.error(`Error updating starttijd: ${startID}`);
                 });
             }
-        })
+        }).catch((e) => {
+            this.logger.error(`Error ophalen start ${startID}: ${e?.message ?? e}`);
+        });
     }
 
     // Flarm heeft gedetecteerd dat een vliegtuig is geland (direct, voorspeld of na een timeout, zie
@@ -99,7 +101,9 @@ export class HeliosOutboundWorker implements OnModuleInit {
                     });
                 }
             }
-        })
+        }).catch((e) => {
+            this.logger.error(`Error ophalen start ${startID}: ${e?.message ?? e}`);
+        });
     }
 
     // Het sleepvliegtuig is geland; processing.ts heeft via SLEEPKIST_ID uitgezocht welk zweefvliegtuig
@@ -177,6 +181,8 @@ export class HeliosOutboundWorker implements OnModuleInit {
             }).catch(() => {
                 this.logger.error(`Error updating startmethode/sleepkist: ${startID}`);
             });
+        }).catch((e) => {
+            this.logger.error(`Error ophalen start ${startID}: ${e?.message ?? e}`);
         });
     }
 

@@ -75,6 +75,8 @@ export class ProcessingService implements  OnModuleInit, OnModuleDestroy  {
         this.loginservice.login().then((succes) => {
             const str:string = succes ? 'success' : 'failed';
             this.logger.log((`Helios login ${str}`));
+        }).catch((e) => {
+            this.logger.error(`Helios login mislukt: ${e?.message ?? e}`);
         });
     }
 
