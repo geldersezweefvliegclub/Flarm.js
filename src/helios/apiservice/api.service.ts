@@ -204,11 +204,13 @@ export class APIService {
         }
 
         // Helios geeft 501 terug als de sessie/token niet meer geldig is; elke volgende aanroep zou
-        // dan ook blijven falen. We negeren dit voor de login-endpoints zelf (anders zou een falende
-        // Login/Login of Login/Relogin-aanroep, tijdens een Helios-storing, zichzelf blijven
-        // triggeren) en laten voor alle andere aanroepen LoginService weten dat er opnieuw
-        // ingelogd moet worden.
-        if (response.status === 501 && !url.toLowerCase().includes('login')) {
+        // dan ook blijven falen. We negeren dit alleen voor Login/Login zelf (dat is de aanroep die
+        // de recovery hieronder gebruikt om opnieuw in te loggen; zou die zelf ook met 501 falen
+        // tijdens een Helios-storing, dan zou hij zichzelf blijven triggeren). Login/Relogin telt
+        // hier NIET als login-endpoint: dat is precies de aanroep die keepHeliosAlive() elke 10
+        // minuten doet, en een 501 daarop is het signaal dat de sessie dood is en er via een
+        // volledige login (LoginService.login()) opnieuw ingelogd moet worden.
+        if (response.status === 501 && !url.toLowerCase().includes('login/login')) {
             this.eventEmitter.emit(HeliosEvents.SessionExpired);
         }
 
