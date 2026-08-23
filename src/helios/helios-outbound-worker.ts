@@ -83,7 +83,7 @@ export class HeliosOutboundWorker implements OnModuleInit {
                     // herkend). Landingstijd wordt dan NIET ingevuld. Let op: 's.OPMERKINGEN' wordt hier
                     // wel gevuld, maar in deze tak wordt updateStart() niet aangeroepen, dus dit wordt
                     // niet opgeslagen in Helios — er komt alleen een regel in de eigen log terecht.
-                    this.logger.error(`Starttijd is niet aanwezig bij landing: ${startID}`);
+                    this.logger.warn(`Starttijd is niet aanwezig bij landing: ${startID}`);
                     s.OPMERKINGEN = 'Starttijd niet aanwezig bij landing om ' + DateTime.now().toFormat('HH:mm');
                 }
                 else
