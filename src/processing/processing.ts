@@ -363,49 +363,25 @@ export class ProcessingService implements  OnModuleInit, OnModuleDestroy  {
 
         const vliegtuig = this.heliosInboundService.getVliegtuigByFlarmcode(flarmId);
 
-        // een sleepvliegtuig dat zelf opstijgt (om een zweefvliegtuig te gaan ophalen) is geen lier-,
-        // sleep- of zelfstart in de klassieke zin: hij sleept op dat moment niemand, dus zoekSleep()
-        // vindt nooit een sleepkist en de klimsnelheid haalt zelden de lierdrempel, waardoor dit altijd
-        // op StartMethode.Lier zou uitkomen. Dat klopt vrijwel nooit met het vooraf ingevulde
-        // STARTMETHODE_ID, en gaf daardoor bij vrijwel elke sleepstart een overbodige "Controleer
-        // startmethode"-opmerking op de start van het sleepvliegtuig zelf.
+        // een sleepvliegtuig dat zelf opstijgt is geen lier-, sleep- of zelfstart in de klassieke zin: hij sleept op dat moment niemand,
+        // we zoeken naar een sleepkoppeling bij een ander vliegtuig om te bepalen of het een sleepstart is
+        // dus kunnen we de sleepkist-vliegtuigen overslaan bij het bepalen van de startmethode
         if (vliegtuig?.SLEEPKIST) {
             this.logger.debug(`StartMethode niet bepaald voor ${vliegtuig?.REG_CALL}: is zelf een sleepvliegtuig`);
             return;
         }
 
-        const takeoffWindow = history.filter(m => m.speed > 0); // geen stilstaande flarmberichten, dus alleen de periode waarin het vliegtuig snelheid had
-        const climbs = takeoffWindow.map(m => m.kalman_climb ?? m.climbRate ?? 0);
-
-        // wat is de maximale klimsnelheid geweest tijdens de start (alleen voor logging/diagnose,
-        // zie langsteReeksBovenDrempel hieronder voor de daadwerkelijke lier-bepaling)
-        const maxClimb = climbs.length > 0 ? Math.max(...climbs) : 0;
-
-        // een lierstart heeft een aanhoudend hoge klimsnelheid (~400m in 30s); een enkele foutieve
-        // of ruizige meting boven de 10 m/s (bv. door het Kalman-filter) mag niet meteen als
-        // lierstart gelden, dus eisen we minimaal 5 opeenvolgende metingen boven de drempel
-        const LIER_KLIM_DREMPEL = 10;
-        const MIN_OPEENVOLGENDE_METINGEN = 5;
-        let langsteReeksBovenDrempel = 0, huidigeReeksBovenDrempel = 0;
-        for (const climb of climbs) {
-            huidigeReeksBovenDrempel = climb > LIER_KLIM_DREMPEL ? huidigeReeksBovenDrempel + 1 : 0;
-            langsteReeksBovenDrempel = Math.max(langsteReeksBovenDrempel, huidigeReeksBovenDrempel);
-        }
-        const isLierKlimprofiel = langsteReeksBovenDrempel >= MIN_OPEENVOLGENDE_METINGEN;
-
         // eerst proberen een sleepvliegtuig te vinden: een gevonden sleepkoppeling is een specifieker en
-        // betrouwbaarder signaal dan de klimsnelheid, en voorkomt dat een sleepstart met een vroege
-        // klimstoot (bv. loskoppelen in sterke thermiek, vlak na de 30s-meting) toch als lierstart wordt
-        // weggeschreven. Uit analyse van de opnames blijkt dit ook voor lierstarts (klim > 10 m/s) geen
-        // enkele keer een vals sleepvliegtuig oplevert, dus we hoeven de zoektocht niet over te slaan.
+        // betrouwbaarder signaal dan de klimsnelheid, en voorkomt dat een sleepstart met een
+        // korte hoge klimsnelheid toch als lierstart gezien wordt
         const sleepkistID = this.zoekSleep(flarmId);
 
         let startMethode: StartMethode;
         if (sleepkistID > 0) {
             startMethode = StartMethode.Sleep;
         }
-        else if (isLierKlimprofiel)             // aanhoudend hoge klimsnelheid, ook bij een zelfstart-capabel
-        {                                        // vliegtuig dat toch aan de lier gaat
+        else if (this.isLierstart(history))     // aanhoudend hoge klimsnelheid over langere periode (> 10 m/s) is typisch voor een lierstart
+        {
             startMethode = StartMethode.Lier;
         }
         else if (vliegtuig?.ZELFSTART) {
@@ -414,13 +390,30 @@ export class ProcessingService implements  OnModuleInit, OnModuleDestroy  {
             startMethode = StartMethode.Zelfstart;
         }
         else {
-            // geen sleepvliegtuig gevonden en geen zelfstarter, dus lierstart (ook als de klimsnelheid
-            // laag was, bv. door een kabelbreuk met een lage ontkoppelhoogte)
+            // geen sleepvliegtuig gevonden en geen zelfstarter, dus lierstart
             startMethode = StartMethode.Lier;
         }
 
-       this.logger.log(`StartMethode: ${vliegtuig?.REG_CALL} → ${StartMethode[startMethode]} (maxClimb: ${maxClimb.toFixed(1)} m/s, reeks>${LIER_KLIM_DREMPEL}m/s: ${langsteReeksBovenDrempel}, towPlane: ${sleepkistID})`);
+       this.logger.log(`StartMethode: ${vliegtuig?.REG_CALL} → ${StartMethode[startMethode]} (towPlane: ${sleepkistID})`);
        this.eventEmitter.emit(GliderEvents.StartMethodeDetermined, data.startID, startMethode, sleepkistID);
+    }
+
+    // een lierstart heeft een aanhoudend hoge klimsnelheid (~400m in 30s); een enkele foutieve
+    // meting boven de drempel (bv. door het Kalman-filter) mag niet meteen als lierstart
+    // gelden, dus eisen we minimaal een aantal opeenvolgende metingen boven de drempel
+    private isLierstart(history: FlarmData[]): boolean {
+        const LIER_KLIM_DREMPEL = 10;           // 10 m/s halen we gemakkelijk bij een lierstart, maar niet bij een zelfstart of sleepstart
+        const MIN_OPEENVOLGENDE_METINGEN = 5;   // we hebben 5 opeenvolgende metingen nodig boven de drempel om een lierstart te detecteren
+
+        const takeoffWindow = history.filter(m => m.speed > 0); // geen stilstaande flarmberichten, dus alleen de periode waarin het vliegtuig snelheid had
+        const climbs = takeoffWindow.map(m => m.kalman_climb ?? m.climbRate ?? 0);
+
+        let langsteReeksBovenDrempel = 0, huidigeReeksBovenDrempel = 0;
+        for (const climb of climbs) {
+            huidigeReeksBovenDrempel = climb > LIER_KLIM_DREMPEL ? huidigeReeksBovenDrempel + 1 : 0;
+            langsteReeksBovenDrempel = Math.max(langsteReeksBovenDrempel, huidigeReeksBovenDrempel);
+        }
+        return langsteReeksBovenDrempel >= MIN_OPEENVOLGENDE_METINGEN;
     }
 
     // op zoek naar een sleepvliegtuig dat in de buurt van het zweefvliegtuig vliegt (zelfde snelheid en koers, afstand 40-200 m)
