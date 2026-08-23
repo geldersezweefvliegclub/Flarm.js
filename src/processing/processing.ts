@@ -375,12 +375,23 @@ export class ProcessingService implements  OnModuleInit, OnModuleDestroy  {
         }
 
         const takeoffWindow = history.filter(m => m.speed > 0); // geen stilstaande flarmberichten, dus alleen de periode waarin het vliegtuig snelheid had
+        const climbs = takeoffWindow.map(m => m.kalman_climb ?? m.climbRate ?? 0);
 
-        // wat is de maximale klimsnelheid geweest tijdens de start,
-        // gebruik de historische flarm data (niet alleen de laatste update) om een betrouwbare bepaling te maken
-        const maxClimb = takeoffWindow.length > 0
-            ? Math.max(...takeoffWindow.map(m => m.kalman_climb ?? m.climbRate ?? 0))
-            : 0;
+        // wat is de maximale klimsnelheid geweest tijdens de start (alleen voor logging/diagnose,
+        // zie langsteReeksBovenDrempel hieronder voor de daadwerkelijke lier-bepaling)
+        const maxClimb = climbs.length > 0 ? Math.max(...climbs) : 0;
+
+        // een lierstart heeft een aanhoudend hoge klimsnelheid (~400m in 30s); een enkele foutieve
+        // of ruizige meting boven de 10 m/s (bv. door het Kalman-filter) mag niet meteen als
+        // lierstart gelden, dus eisen we minimaal 5 opeenvolgende metingen boven de drempel
+        const LIER_KLIM_DREMPEL = 10;
+        const MIN_OPEENVOLGENDE_METINGEN = 5;
+        let langsteReeksBovenDrempel = 0, huidigeReeksBovenDrempel = 0;
+        for (const climb of climbs) {
+            huidigeReeksBovenDrempel = climb > LIER_KLIM_DREMPEL ? huidigeReeksBovenDrempel + 1 : 0;
+            langsteReeksBovenDrempel = Math.max(langsteReeksBovenDrempel, huidigeReeksBovenDrempel);
+        }
+        const isLierKlimprofiel = langsteReeksBovenDrempel >= MIN_OPEENVOLGENDE_METINGEN;
 
         // eerst proberen een sleepvliegtuig te vinden: een gevonden sleepkoppeling is een specifieker en
         // betrouwbaarder signaal dan de klimsnelheid, en voorkomt dat een sleepstart met een vroege
@@ -393,20 +404,22 @@ export class ProcessingService implements  OnModuleInit, OnModuleDestroy  {
         if (sleepkistID > 0) {
             startMethode = StartMethode.Sleep;
         }
+        else if (isLierKlimprofiel)             // aanhoudend hoge klimsnelheid, ook bij een zelfstart-capabel
+        {                                        // vliegtuig dat toch aan de lier gaat
+            startMethode = StartMethode.Lier;
+        }
         else if (vliegtuig?.ZELFSTART) {
-            // geen sleepvliegtuig gevonden en dit vliegtuig kan zelfstarten: dan is het een zelfstart,
-            // ongeacht de gemeten klimsnelheid. Een zelfstarter kan tijdens het wegtrekken kortstondig
-            // een hoge (motor)klimsnelheid laten zien die ruim boven de lierdrempel van 10 m/s uitkomt
-            // (in de praktijk tot ~19 m/s gezien), dus de klimsnelheid is voor deze vliegtuigen geen
-            // betrouwbaar onderscheid tussen lier en zelfstart.
+            // geen sleepvliegtuig gevonden, klimsnelheid niet aanhoudend hoog (typisch voor een
+            // zelfstart), en dit vliegtuig kan zelfstarten
             startMethode = StartMethode.Zelfstart;
         }
         else {
-            // geen sleepvliegtuig gevonden en geen zelfstarter, dus lierstart
+            // geen sleepvliegtuig gevonden en geen zelfstarter, dus lierstart (ook als de klimsnelheid
+            // laag was, bv. door een kabelbreuk met een lage ontkoppelhoogte)
             startMethode = StartMethode.Lier;
         }
 
-       this.logger.log(`StartMethode: ${vliegtuig?.REG_CALL} → ${StartMethode[startMethode]} (maxClimb: ${maxClimb.toFixed(1)} m/s, towPlane: ${sleepkistID})`);
+       this.logger.log(`StartMethode: ${vliegtuig?.REG_CALL} → ${StartMethode[startMethode]} (maxClimb: ${maxClimb.toFixed(1)} m/s, reeks>${LIER_KLIM_DREMPEL}m/s: ${langsteReeksBovenDrempel}, towPlane: ${sleepkistID})`);
        this.eventEmitter.emit(GliderEvents.StartMethodeDetermined, data.startID, startMethode, sleepkistID);
     }
 
