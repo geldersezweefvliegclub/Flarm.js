@@ -362,6 +362,18 @@ export class ProcessingService implements  OnModuleInit, OnModuleDestroy  {
         const history = this.positionHistory.get(flarmId) ?? [];
 
         const vliegtuig = this.heliosInboundService.getVliegtuigByFlarmcode(flarmId);
+
+        // een sleepvliegtuig dat zelf opstijgt (om een zweefvliegtuig te gaan ophalen) is geen lier-,
+        // sleep- of zelfstart in de klassieke zin: hij sleept op dat moment niemand, dus zoekSleep()
+        // vindt nooit een sleepkist en de klimsnelheid haalt zelden de lierdrempel, waardoor dit altijd
+        // op StartMethode.Lier zou uitkomen. Dat klopt vrijwel nooit met het vooraf ingevulde
+        // STARTMETHODE_ID, en gaf daardoor bij vrijwel elke sleepstart een overbodige "Controleer
+        // startmethode"-opmerking op de start van het sleepvliegtuig zelf.
+        if (vliegtuig?.SLEEPKIST) {
+            this.logger.debug(`StartMethode niet bepaald voor ${vliegtuig?.REG_CALL}: is zelf een sleepvliegtuig`);
+            return;
+        }
+
         const takeoffWindow = history.filter(m => m.speed > 0); // geen stilstaande flarmberichten, dus alleen de periode waarin het vliegtuig snelheid had
 
         // wat is de maximale klimsnelheid geweest tijdens de start,
@@ -370,30 +382,28 @@ export class ProcessingService implements  OnModuleInit, OnModuleDestroy  {
             ? Math.max(...takeoffWindow.map(m => m.kalman_climb ?? m.climbRate ?? 0))
             : 0;
 
-        let sleepkistID = -1
+        // eerst proberen een sleepvliegtuig te vinden: een gevonden sleepkoppeling is een specifieker en
+        // betrouwbaarder signaal dan de klimsnelheid, en voorkomt dat een sleepstart met een vroege
+        // klimstoot (bv. loskoppelen in sterke thermiek, vlak na de 30s-meting) toch als lierstart wordt
+        // weggeschreven. Uit analyse van de opnames blijkt dit ook voor lierstarts (klim > 10 m/s) geen
+        // enkele keer een vals sleepvliegtuig oplevert, dus we hoeven de zoektocht niet over te slaan.
+        const sleepkistID = this.zoekSleep(flarmId);
 
         let startMethode: StartMethode;
-        if (maxClimb > 10)                      // een sleepstart, of zelfstart haalt geen 10 m/s klimsnelheid
-        {
-            startMethode = StartMethode.Lier;
+        if (sleepkistID > 0) {
+            startMethode = StartMethode.Sleep;
         }
-        else
-        {
-            // zoek naar een sleepvliegtuig dat in de buurt van dit zweefvliegtuig vliegt (zelfde snelheid en koers, afstand 40-200 m)
-            // we doen de aanname dat sleepkist ook flarm heeft
-            sleepkistID = this.zoekSleep(flarmId);
-
-            // kunnen we geen sleepkist vinden en zweefvliegtuig is zelfstarter, dan zelfstart
-            if (sleepkistID > 0) {
-                startMethode = StartMethode.Sleep;
-            }
-            else if (vliegtuig?.ZELFSTART) {
-                startMethode = StartMethode.Zelfstart;
-            }
-            else {
-                // klimsnelheid is laag, geen sleepkist gevonden, en geen zelfstarter, dus toch maar lierstart
-                startMethode = StartMethode.Lier;
-            }
+        else if (vliegtuig?.ZELFSTART) {
+            // geen sleepvliegtuig gevonden en dit vliegtuig kan zelfstarten: dan is het een zelfstart,
+            // ongeacht de gemeten klimsnelheid. Een zelfstarter kan tijdens het wegtrekken kortstondig
+            // een hoge (motor)klimsnelheid laten zien die ruim boven de lierdrempel van 10 m/s uitkomt
+            // (in de praktijk tot ~19 m/s gezien), dus de klimsnelheid is voor deze vliegtuigen geen
+            // betrouwbaar onderscheid tussen lier en zelfstart.
+            startMethode = StartMethode.Zelfstart;
+        }
+        else {
+            // geen sleepvliegtuig gevonden en geen zelfstarter, dus lierstart
+            startMethode = StartMethode.Lier;
         }
 
        this.logger.log(`StartMethode: ${vliegtuig?.REG_CALL} → ${StartMethode[startMethode]} (maxClimb: ${maxClimb.toFixed(1)} m/s, towPlane: ${sleepkistID})`);
